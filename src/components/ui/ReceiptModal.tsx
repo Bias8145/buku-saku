@@ -46,9 +46,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
     setIsGeneratingPdf(true);
     try {
-      // 1. Capture elemen struk menjadi gambar canvas dengan resolusi tinggi
+      // 1. Capture elemen struk
+      // Optimasi: Gunakan scale 2 (cukup tajam untuk struk, file lebih kecil)
       const canvas = await html2canvas(element, {
-        scale: 3, // Scale tinggi agar teks tajam
+        scale: 2, 
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
@@ -56,24 +57,23 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
         windowHeight: element.scrollHeight
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      // Optimasi: Gunakan JPEG dengan kualitas 0.8 (jauh lebih ringan dari PNG)
+      const imgData = canvas.toDataURL('image/jpeg', 0.8);
       
-      // 2. Hitung dimensi PDF agar pas dengan struk (bukan A4)
-      // Kita set lebar fix 58mm (standar thermal), tinggi menyesuaikan proporsi gambar
       const pdfWidth = 58; 
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-      // 3. Buat PDF dengan ukuran custom (Continuous Paper)
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [pdfWidth, pdfHeight] // Ukuran dinamis, jadi 1 halaman panjang
+        format: [pdfWidth, pdfHeight],
+        compress: true // Aktifkan kompresi
       });
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Struk-28POINT-${data.id.slice(0, 8)}.pdf`);
       
-      showToast("PDF berhasil disimpan!", "success");
+      showToast("PDF berhasil disimpan (Hemat Penyimpanan)!", "success");
     } catch (error) {
       console.error("PDF Error:", error);
       showToast("Gagal membuat PDF", "error");
@@ -151,7 +151,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           @media print {
             @page {
               margin: 0;
-              size: auto; /* Biarkan konten menentukan ukuran */
+              size: auto;
             }
             html, body {
               height: auto !important;
@@ -160,9 +160,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               padding: 0 !important;
               background: white !important;
             }
+            /* Sembunyikan semua elemen kecuali struk */
             body * {
               visibility: hidden;
             }
+            /* Tampilkan struk dan atur posisi absolute ke pojok kiri atas */
             #receipt-content, #receipt-content * {
               visibility: visible;
             }
@@ -170,20 +172,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               position: absolute;
               left: 0;
               top: 0;
-              width: 58mm; /* Lebar fix 58mm */
-              min-height: auto;
+              width: 58mm;
               padding: 0;
               margin: 0;
-              font-family: 'Courier New', Courier, monospace;
+              /* Gunakan font sans-serif standar agar render lebih aman */
+              font-family: 'Arial', sans-serif; 
               font-size: 10px;
-              line-height: 1.1;
+              line-height: 1.3; /* Jarak antar baris diperlonggar agar tidak overlap */
               color: black;
               background: white;
-              /* Properti kunci untuk mencegah potong halaman */
               page-break-inside: avoid; 
-              break-inside: avoid;
-              page-break-before: avoid;
-              page-break-after: avoid;
             }
             .no-print {
               display: none !important;
@@ -208,23 +206,26 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             </button>
           </div>
 
-          {/* Receipt Content Area - Dipadatkan */}
-          <div className="p-6 font-mono text-sm leading-relaxed print:p-2 bg-white print:w-[58mm]" id="receipt-content">
+          {/* Receipt Content Area */}
+          {/* Menggunakan font sans-serif dan leading-relaxed untuk mencegah overlap */}
+          <div className="p-6 font-sans text-sm leading-relaxed print:p-2 bg-white print:w-[58mm]" id="receipt-content">
             <div className="text-center mb-4 print:mb-2">
               <h2 className="text-2xl font-black uppercase tracking-widest mb-1 print:text-lg">28 POINT</h2>
               <p className="text-[10px] text-slate-500 print:text-[8px]">Store & Management</p>
               
-              <div className="mt-3 text-[10px] text-slate-400 flex justify-between border-t border-b border-dashed border-slate-300 py-1.5 print:text-[8px] print:mt-1 print:py-1 print:border-black">
+              <div className="mt-3 text-[10px] text-slate-400 flex justify-between border-t border-b border-dashed border-slate-300 py-2 print:text-[8px] print:mt-1 print:py-1 print:border-black">
                  <span>NO: {data.id.slice(0, 8).toUpperCase()}</span>
                  <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
               </div>
             </div>
 
-            <div className="space-y-2 min-h-[50px] print:space-y-1 print:min-h-0">
+            {/* Item List - Tambahkan gap vertikal */}
+            <div className="space-y-3 min-h-[50px] print:space-y-2 print:min-h-0">
               {data.items.map((item, index) => (
-                <div key={index} className="flex flex-col border-b border-slate-50 pb-1 last:border-0 last:pb-0 print:border-none print:pb-0">
-                  <p className="font-bold truncate text-slate-800 print:text-[9px] print:whitespace-normal leading-tight">{item.name}</p>
-                  <div className="flex justify-between text-xs text-slate-500 mt-0.5 print:text-[9px] print:mt-0 print:text-black">
+                <div key={index} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 last:pb-0 print:border-none print:pb-0">
+                  {/* Pastikan nama barang tidak overlap dengan harga */}
+                  <p className="font-bold text-slate-800 print:text-[9px] leading-snug mb-1">{item.name}</p>
+                  <div className="flex justify-between text-xs text-slate-500 print:text-[9px] print:text-black">
                     <span>{item.qty} x {formatCurrency(item.price)}</span>
                     <span className="font-bold text-slate-900 print:text-black">{formatCurrency(item.qty * item.price)}</span>
                   </div>
@@ -232,10 +233,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               ))}
             </div>
 
-            <div className="border-t border-slate-800 my-3 print:my-1 print:border-black print:border-dashed" />
+            <div className="border-t border-slate-800 my-4 print:my-2 print:border-black print:border-dashed" />
 
             {/* Rincian Pembayaran */}
-            <div className="space-y-1 print:space-y-0.5">
+            <div className="space-y-1 print:space-y-1">
               <div className="flex justify-between items-center text-lg font-black text-slate-900 print:text-xs">
                 <span>TOTAL</span>
                 <span>{formatCurrency(data.total)}</span>
@@ -255,12 +256,12 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               )}
             </div>
 
-            <div className="border-b border-dashed border-slate-300 my-3 print:my-1 print:border-black" />
+            <div className="border-b border-dashed border-slate-300 my-4 print:my-2 print:border-black" />
 
-            {/* Footer Compact */}
-            <div className="text-center space-y-3 mt-4 print:mt-1 print:space-y-1">
+            {/* Footer */}
+            <div className="text-center space-y-3 mt-4 print:mt-2 print:space-y-2">
               <div className="text-[10px] text-slate-500 print:text-[8px] print:text-black leading-tight">
-                <p className="font-bold text-slate-700 print:text-black">TERIMA KASIH</p>
+                <p className="font-bold text-slate-700 print:text-black mb-1">TERIMA KASIH</p>
                 <p>Barang yang sudah dibeli</p>
                 <p>tidak dapat ditukar/dikembalikan.</p>
               </div>
