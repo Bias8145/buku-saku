@@ -15,7 +15,9 @@ import {
   PackageOpen,
   X,
   ChevronUp,
-  Camera
+  Camera,
+  Banknote,
+  Wallet
 } from 'lucide-react';
 import { SEO } from '../components/SEO';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,7 +25,6 @@ import { useToast } from '../context/ToastContext';
 import { ReceiptModal } from '../components/ui/ReceiptModal';
 import { Html5QrcodeScanner } from 'html5-qrcode';
 
-// Tipe data untuk item di keranjang
 interface CartItem extends Product {
   qty: number;
 }
@@ -36,19 +37,21 @@ export const Cashier = () => {
   const [showScanner, setShowScanner] = useState(false);
   const [receiptData, setReceiptData] = useState<any | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
-  
-  // State khusus Mobile
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
+  
+  // State untuk Modal Pembayaran
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [cashReceived, setCashReceived] = useState<string>('');
+  const [changeAmount, setChangeAmount] = useState<number>(0);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const paymentInputRef = useRef<HTMLInputElement>(null);
   
   const { showToast } = useToast();
 
   useEffect(() => {
     fetchProducts();
-    
-    // Cleanup scanner saat unmount
     return () => {
       if (scannerRef.current) {
         scannerRef.current.clear().catch(console.error);
@@ -56,10 +59,24 @@ export const Cashier = () => {
     };
   }, []);
 
-  // Effect untuk Scanner
+  // Fokus ke input pembayaran saat modal muncul
+  useEffect(() => {
+    if (showPaymentModal && paymentInputRef.current) {
+      setTimeout(() => {
+        paymentInputRef.current?.focus();
+      }, 100);
+    }
+  }, [showPaymentModal]);
+
+  // Hitung kembalian real-time
+  useEffect(() => {
+    const total = calculateTotal();
+    const cash = Number(cashReceived.replace(/\D/g, ''));
+    setChangeAmount(cash - total);
+  }, [cashReceived, cart]);
+
   useEffect(() => {
     if (showScanner) {
-      // Delay sedikit agar elemen DOM #reader tersedia
       const timer = setTimeout(() => {
         const onScanSuccess = (decodedText: string) => {
             handleSearch({ target: { value: decodedText } } as any);
@@ -69,21 +86,15 @@ export const Cashier = () => {
               scannerRef.current.clear().catch(console.error);
             }
         };
-
-        const onScanFailure = (error: any) => {
-            // console.warn(`Code scan error = ${error}`);
-        };
-
+        const onScanFailure = (error: any) => {};
         const scanner = new Html5QrcodeScanner(
             "reader",
             { fps: 10, qrbox: { width: 250, height: 250 } },
-            /* verbose= */ false
+            false
         );
-        
         scanner.render(onScanSuccess, onScanFailure);
         scannerRef.current = scanner;
       }, 100);
-
       return () => clearTimeout(timer);
     } else {
       if (scannerRef.current) {
@@ -101,12 +112,10 @@ export const Cashier = () => {
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
-
     const exactMatch = products.find(p => p.sku && p.sku.toLowerCase() === value.toLowerCase());
     if (exactMatch) {
       addToCart(exactMatch);
       setSearchTerm('');
-      // Jika di mobile, beri feedback visual
       showToast(`${exactMatch.name} ditambahkan`, "success");
     }
   };
@@ -116,7 +125,6 @@ export const Cashier = () => {
       showToast(`Stok ${product.name} habis!`, "error");
       return;
     }
-
     setCart(prev => {
       const existing = prev.find(item => item.id === product.id);
       if (existing) {
@@ -153,21 +161,37 @@ export const Cashier = () => {
     return cart.reduce((acc, item) => acc + (item.sell_price * item.qty), 0);
   };
 
-  const handleCheckout = async () => {
+  const openPaymentModal = () => {
     if (cart.length === 0) return;
+    setCashReceived('');
+    setChangeAmount(0 - calculateTotal());
+    setShowPaymentModal(true);
+    setIsMobileCartOpen(false);
+  };
+
+  const processPayment = async () => {
+    const totalAmount = calculateTotal();
+    const cash = Number(cashReceived.replace(/\D/g, ''));
+
+    if (cash < totalAmount) {
+      showToast("Uang tunai kurang!", "error");
+      return;
+    }
+
     setIsCheckingOut(true);
-
     try {
-      const totalAmount = calculateTotal();
       const date = new Date().toISOString();
+      const change = cash - totalAmount;
 
-      // 1. Simpan Transaksi Utama
+      // 1. Simpan Transaksi Utama dengan Detail Pembayaran
       const { data: txData, error: txError } = await supabase
         .from('transactions')
         .insert([{
           type: 'income',
           category: 'sales',
           amount: totalAmount,
+          payment_amount: cash, // Simpan Uang Tunai
+          change_amount: change, // Simpan Kembalian
           description: `Penjualan Kasir: ${cart.length} item`,
           date: date
         }])
@@ -198,7 +222,6 @@ export const Cashier = () => {
           .from('products')
           .update({ stock: item.stock - item.qty })
           .eq('id', item.id);
-        
         if (stockError) console.error("Gagal update stok", stockError);
       }
 
@@ -206,12 +229,14 @@ export const Cashier = () => {
         id: txData.id,
         date: date,
         total: totalAmount,
+        payment_amount: cash,
+        change_amount: change,
         items: cart.map(c => ({ name: c.name, qty: c.qty, price: c.sell_price }))
       });
-      setShowReceipt(true);
       
+      setShowPaymentModal(false);
+      setShowReceipt(true);
       setCart([]);
-      setIsMobileCartOpen(false);
       fetchProducts(); 
     } catch (error: any) {
       showToast(`Gagal Checkout: ${error.message}`, "error");
@@ -225,10 +250,8 @@ export const Cashier = () => {
     (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // Komponen Keranjang (Reusable)
   const CartContent = ({ isMobile = false }: { isMobile?: boolean }) => (
     <div className="flex flex-col h-full">
-      {/* Header Keranjang */}
       <div className={cn(
         "p-5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex justify-between items-center",
         isMobile && "pt-2" 
@@ -240,7 +263,6 @@ export const Cashier = () => {
         <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-lg">{cart.reduce((a, c) => a + c.qty, 0)} Item</span>
       </div>
 
-      {/* List Item */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
         {cart.length > 0 ? (
           cart.map((item) => (
@@ -253,19 +275,12 @@ export const Cashier = () => {
                 <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 truncate">{item.name}</h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">{formatCurrency(item.sell_price)}</p>
               </div>
-              
               <div className="flex items-center gap-3 bg-slate-50 dark:bg-slate-800 rounded-lg p-1">
-                <button 
-                  onClick={() => item.qty > 1 ? updateQty(item.id, -1) : removeFromCart(item.id)}
-                  className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md shadow-sm transition-colors text-slate-600 dark:text-slate-300"
-                >
+                <button onClick={() => item.qty > 1 ? updateQty(item.id, -1) : removeFromCart(item.id)} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md shadow-sm transition-colors text-slate-600 dark:text-slate-300">
                   {item.qty === 1 ? <Trash2 size={14} className="text-red-500" /> : <Minus size={14} />}
                 </button>
                 <span className="text-xs font-bold w-4 text-center">{item.qty}</span>
-                <button 
-                  onClick={() => updateQty(item.id, 1)}
-                  className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md shadow-sm transition-colors text-blue-600 dark:text-blue-400"
-                >
+                <button onClick={() => updateQty(item.id, 1)} className="p-1 hover:bg-white dark:hover:bg-slate-700 rounded-md shadow-sm transition-colors text-blue-600 dark:text-blue-400">
                   <Plus size={14} />
                 </button>
               </div>
@@ -279,21 +294,18 @@ export const Cashier = () => {
         )}
       </div>
 
-      {/* Footer Checkout */}
       <div className={cn(
         "p-5 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 space-y-4",
-        isMobile && "pb-8" // Extra padding for mobile bottom safe area
+        isMobile && "pb-8"
       )}>
         <div className="flex justify-between items-center">
           <span className="text-slate-500 dark:text-slate-400 text-sm">Total Tagihan</span>
           <span className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(calculateTotal())}</span>
         </div>
-        
         <Button 
-          onClick={handleCheckout}
-          disabled={cart.length === 0 || isCheckingOut}
+          onClick={openPaymentModal}
+          disabled={cart.length === 0}
           className="w-full py-4 text-base rounded-xl shadow-lg shadow-blue-500/20"
-          isLoading={isCheckingOut}
         >
           <CreditCard size={20} className="mr-2" />
           Bayar Sekarang
@@ -306,16 +318,9 @@ export const Cashier = () => {
     <div className="flex flex-col md:flex-row gap-6 animate-in fade-in duration-500 md:h-[calc(100vh-100px)]">
       <SEO title="Kasir" description="Point of Sales aplikasi Buku Saku." />
       
-      {/* KIRI: Katalog Produk */}
-      {/* Mobile: Full Height scroll normal. Desktop: Flex-1 */}
       <div className="flex-1 flex flex-col min-h-0 pb-32 md:pb-0">
-        <PageHeader 
-          title="Kasir" 
-          description="Scan barcode atau pilih produk."
-          className="mb-6"
-        />
+        <PageHeader title="Kasir" description="Scan barcode atau pilih produk." className="mb-6" />
 
-        {/* Search & Scan Bar */}
         <div className="flex gap-3 mb-6 sticky top-0 z-20 bg-[#F8FAFC] dark:bg-[#020617] py-2">
           <div className="relative flex-1">
             <input 
@@ -331,13 +336,11 @@ export const Cashier = () => {
           <Button 
             onClick={() => setShowScanner(!showScanner)}
             className={`px-4 rounded-2xl ${showScanner ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-900 dark:bg-slate-800'} text-white`}
-            title={showScanner ? "Tutup Scanner" : "Buka Kamera Scanner"}
           >
             {showScanner ? <X size={20} /> : <ScanBarcode size={20} />}
           </Button>
         </div>
 
-        {/* Area Scanner Kamera (Real) */}
         <AnimatePresence>
           {showScanner && (
             <motion.div 
@@ -351,12 +354,10 @@ export const Cashier = () => {
                 <span>Izinkan akses kamera saat diminta browser</span>
               </div>
               <div id="reader" className="w-full rounded-lg overflow-hidden border-2 border-slate-700"></div>
-              <p className="text-center text-slate-400 text-xs mt-2">Arahkan kamera ke barcode produk</p>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Grid Produk */}
         <div className="flex-1 md:overflow-y-auto custom-scrollbar pr-0 md:pr-2">
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
             {filteredProducts.map((p) => (
@@ -383,32 +384,21 @@ export const Cashier = () => {
                 </div>
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm mb-1 line-clamp-2 min-h-[40px] leading-tight">{p.name}</h3>
                 <p className="text-blue-600 dark:text-blue-400 font-bold">{formatCurrency(p.sell_price)}</p>
-                
-                {/* Add Overlay (Desktop Only) */}
-                <div className="hidden md:flex absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 transition-opacity items-center justify-center">
-                  <div className="bg-blue-600 text-white p-2 rounded-full shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform">
-                    <Plus size={24} />
-                  </div>
-                </div>
               </motion.div>
             ))}
           </div>
           {filteredProducts.length === 0 && (
-            <div className="text-center py-20 text-slate-400">
-              Produk tidak ditemukan.
-            </div>
+            <div className="text-center py-20 text-slate-400">Produk tidak ditemukan.</div>
           )}
         </div>
       </div>
 
-      {/* KANAN: Keranjang (Desktop Mode) - HIDDEN ON MOBILE */}
       <div className="hidden md:flex w-[380px] flex-col h-full sticky top-0">
         <Card className="flex-1 flex flex-col overflow-hidden border-blue-100 dark:border-slate-800 shadow-2xl shadow-blue-900/5 p-0">
           <CartContent />
         </Card>
       </div>
 
-      {/* MOBILE FLOATING CART BAR - VISIBLE ON MOBILE ONLY */}
       <AnimatePresence>
         {cart.length > 0 && (
           <motion.div 
@@ -438,7 +428,6 @@ export const Cashier = () => {
         )}
       </AnimatePresence>
 
-      {/* MOBILE CART DRAWER (Popup) */}
       <AnimatePresence>
         {isMobileCartOpen && (
           <>
@@ -456,23 +445,98 @@ export const Cashier = () => {
               transition={{ type: "spring", damping: 25, stiffness: 300 }}
               className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 rounded-t-[2rem] z-[70] h-[90vh] flex flex-col shadow-[0_-10px_40px_-10px_rgba(0,0,0,0.2)]"
             >
-              {/* Handle Bar Area */}
               <div className="flex items-center justify-between px-6 pt-4 pb-2">
                  <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto absolute left-1/2 -translate-x-1/2" />
-                 <div /> {/* Spacer */}
-                 <button 
-                   onClick={() => setIsMobileCartOpen(false)} 
-                   className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:bg-slate-200 transition-colors"
-                 >
+                 <div />
+                 <button onClick={() => setIsMobileCartOpen(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-500 hover:bg-slate-200 transition-colors">
                   <X size={20} />
                 </button>
               </div>
-              
               <div className="flex-1 overflow-hidden flex flex-col relative">
                 <CartContent isMobile={true} />
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL PEMBAYARAN */}
+      <AnimatePresence>
+        {showPaymentModal && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-6 text-center">Pembayaran Tunai</h3>
+                
+                <div className="space-y-4">
+                  <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl flex justify-between items-center">
+                    <span className="text-sm text-slate-500 dark:text-slate-400">Total Tagihan</span>
+                    <span className="text-xl font-bold text-slate-900 dark:text-white">{formatCurrency(calculateTotal())}</span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Uang Diterima</label>
+                    <div className="relative">
+                      <Banknote className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                      <input 
+                        ref={paymentInputRef}
+                        type="number" 
+                        value={cashReceived}
+                        onChange={(e) => setCashReceived(e.target.value)}
+                        className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-lg font-bold focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="0"
+                      />
+                    </div>
+                    
+                    {/* QUICK CASH BUTTONS */}
+                    <div className="grid grid-cols-3 gap-2 mt-2">
+                      <button 
+                        onClick={() => setCashReceived(calculateTotal().toString())}
+                        className="px-2 py-2 text-xs font-bold bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors flex flex-col items-center justify-center gap-1"
+                      >
+                        <Wallet size={14} />
+                        Uang Pas
+                      </button>
+                      {[10000, 20000, 50000, 100000].map((amount) => (
+                        <button
+                          key={amount}
+                          onClick={() => setCashReceived(amount.toString())}
+                          className="px-2 py-2 text-xs font-medium bg-slate-50 text-slate-600 dark:bg-slate-800 dark:text-slate-300 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                        >
+                          {amount >= 1000 ? `${amount/1000}k` : amount}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl flex justify-between items-center transition-colors ${
+                    changeAmount >= 0 
+                      ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' 
+                      : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400'
+                  }`}>
+                    <span className="text-sm font-medium">Kembalian</span>
+                    <span className="text-xl font-bold">{formatCurrency(changeAmount)}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 mt-8">
+                  <Button variant="ghost" onClick={() => setShowPaymentModal(false)}>Batal</Button>
+                  <Button 
+                    onClick={processPayment} 
+                    disabled={changeAmount < 0 || isCheckingOut}
+                    isLoading={isCheckingOut}
+                  >
+                    Proses Bayar
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

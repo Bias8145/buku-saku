@@ -14,7 +14,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '../context/ToastContext';
 import { ReceiptModal } from '../components/ui/ReceiptModal';
 
-// Interface untuk item detail
 interface TransactionItem {
   id: string;
   product_name: string;
@@ -29,11 +28,8 @@ export const Transactions = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedItems, setExpandedItems] = useState<TransactionItem[]>([]); 
   const [isLoadingItems, setIsLoadingItems] = useState(false);
-  
-  // State untuk Struk
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<any | null>(null);
-  
   const [editingId, setEditingId] = useState<string | null>(null);
   
   const [confirmState, setConfirmState] = useState<{
@@ -93,45 +89,36 @@ export const Transactions = () => {
     }
   };
 
-  // Fungsi untuk membuka Struk dari Riwayat
   const handleOpenReceipt = (tx: Transaction) => {
-    // Pastikan item sudah terload (biasanya user expand dulu baru klik print)
-    // Jika belum expand, kita fetch dulu
     const itemsToPrint = expandedId === tx.id ? expandedItems : [];
     
-    if (itemsToPrint.length === 0 && tx.category === 'sales') {
-       // Fetch on demand jika belum ada data
-       supabase
-        .from('transaction_items')
-        .select('*')
-        .eq('transaction_id', tx.id)
-        .then(({ data }) => {
-          if (data) {
-            setReceiptData({
-              id: tx.id,
-              date: tx.date,
-              total: tx.amount,
-              items: data.map(item => ({
-                name: item.product_name,
-                qty: item.qty,
-                price: item.price
-              }))
-            });
-            setShowReceipt(true);
-          }
-        });
-    } else {
+    // Helper untuk set data struk
+    const setReceipt = (items: any[]) => {
       setReceiptData({
         id: tx.id,
         date: tx.date,
         total: tx.amount,
-        items: itemsToPrint.map(item => ({
+        payment_amount: tx.payment_amount, // Pass data pembayaran
+        change_amount: tx.change_amount,   // Pass data kembalian
+        items: items.map(item => ({
           name: item.product_name,
           qty: item.qty,
           price: item.price
         }))
       });
       setShowReceipt(true);
+    };
+
+    if (itemsToPrint.length === 0 && tx.category === 'sales') {
+       supabase
+        .from('transaction_items')
+        .select('*')
+        .eq('transaction_id', tx.id)
+        .then(({ data }) => {
+          if (data) setReceipt(data);
+        });
+    } else {
+      setReceipt(itemsToPrint);
     }
   };
 
@@ -348,7 +335,6 @@ export const Transactions = () => {
                 : "border-slate-100 dark:border-slate-800 hover:border-slate-200 dark:hover:border-slate-700"
             )}
           >
-            {/* Compact Header Row */}
             <div 
               onClick={() => toggleExpand(t.id)}
               className="p-4 flex items-center justify-between cursor-pointer group relative active:bg-slate-50 dark:active:bg-slate-800/50 transition-colors"
@@ -363,7 +349,6 @@ export const Transactions = () => {
                   {t.type === 'income' ? <ArrowUpRight size={20} strokeWidth={2.5} /> : <ArrowDownLeft size={20} strokeWidth={2.5} />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  {/* Judul & Indikator Catatan - Baris 1 */}
                   <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mb-1">
                     <p className="font-bold text-slate-800 dark:text-slate-100 text-sm truncate">
                       {getCategoryLabel(t.category)}
@@ -381,7 +366,6 @@ export const Transactions = () => {
                     )}
                   </div>
 
-                  {/* Tanggal - Baris 2 */}
                   <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
                     {format(parseISO(t.date), 'dd MMM yyyy', { locale: id })}
                   </p>
@@ -396,7 +380,6 @@ export const Transactions = () => {
                   {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}
                 </span>
                 
-                {/* Always Visible Actions */}
                 <div className="flex items-center gap-1">
                   <button 
                     onClick={(e) => {
@@ -426,7 +409,6 @@ export const Transactions = () => {
               </div>
             </div>
 
-            {/* Expanded Details Panel */}
             <AnimatePresence>
               {expandedId === t.id && (
                 <motion.div
@@ -451,12 +433,10 @@ export const Transactions = () => {
                       </div>
                     </div>
                     
-                    {/* Bagian Detail Barang (Jika ada) */}
                     {t.category === 'sales' && (
                       <div className="col-span-1 md:col-span-2 mt-2">
                         <div className="flex justify-between items-center mb-2">
                            <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Rincian Barang Terjual</p>
-                           {/* Tombol Cetak Struk */}
                            <Button 
                              size="sm" 
                              variant="secondary" 
@@ -486,6 +466,20 @@ export const Transactions = () => {
                                   <p className="font-bold text-slate-700 dark:text-slate-300 text-xs">{formatCurrency(item.subtotal)}</p>
                                 </div>
                               ))}
+                              
+                              {/* Tampilkan Info Pembayaran jika ada */}
+                              {t.payment_amount && (
+                                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-xs border-t border-slate-100 dark:border-slate-800">
+                                  <div className="flex justify-between text-slate-500 mb-1">
+                                    <span>Tunai</span>
+                                    <span>{formatCurrency(t.payment_amount)}</span>
+                                  </div>
+                                  <div className="flex justify-between text-slate-500">
+                                    <span>Kembali</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300">{formatCurrency(t.change_amount || 0)}</span>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="p-4 text-center text-slate-400 text-xs italic">

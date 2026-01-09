@@ -28,6 +28,8 @@ export type Transaction = {
   type: 'income' | 'expense';
   category: 'sales' | 'capital' | 'operational' | 'other';
   amount: number;
+  payment_amount?: number; // Baru: Uang Tunai
+  change_amount?: number;  // Baru: Kembalian
   description?: string;
   date: string;
   created_at: string;

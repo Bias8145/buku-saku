@@ -17,6 +17,8 @@ interface ReceiptData {
   id: string;
   date: string;
   total: number;
+  payment_amount?: number; // Baru
+  change_amount?: number;  // Baru
   items: ReceiptItem[];
 }
 
@@ -37,7 +39,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
   const generateReceiptText = () => {
     const dateStr = format(new Date(data.date), 'dd/MM/yyyy HH:mm', { locale: id });
-    // Header Nama Toko
     let text = `*28 POINT*\n`;
     text += `Struk Belanja\n`;
     text += `--------------------------------\n`;
@@ -51,7 +52,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
     });
     
     text += `--------------------------------\n`;
-    text += `TOTAL: ${formatCurrency(data.total)}\n`;
+    text += `TOTAL   : ${formatCurrency(data.total)}\n`;
+    if (data.payment_amount !== undefined && data.change_amount !== undefined) {
+      text += `TUNAI   : ${formatCurrency(data.payment_amount)}\n`;
+      text += `KEMBALI : ${formatCurrency(data.change_amount)}\n`;
+    }
     text += `--------------------------------\n`;
     text += `Terima kasih telah berbelanja!\n`;
     text += `Barang tidak dapat ditukar.\n`;
@@ -72,7 +77,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
         console.log('Error sharing:', err);
       }
     } else {
-      // Fallback copy to clipboard
       try {
         await navigator.clipboard.writeText(text);
         showToast("Struk disalin ke clipboard!", "success");
@@ -102,10 +106,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             </button>
           </div>
 
-          {/* Receipt Content (Thermal Printer Style) */}
+          {/* Receipt Content */}
           <div className="p-8 font-mono text-sm leading-relaxed print:p-0" id="receipt-area">
             <div className="text-center mb-6">
-              {/* NAMA TOKO (Besar) */}
               <h2 className="text-3xl font-black uppercase tracking-widest mb-1">28 POINT</h2>
               <p className="text-xs text-slate-500">Store & Management</p>
               
@@ -115,7 +118,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               </div>
             </div>
 
-            <div className="space-y-3 min-h-[100px]">
+            <div className="space-y-3 min-h-[50px]">
               {data.items.map((item, index) => (
                 <div key={index} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 last:pb-0">
                   <p className="font-bold truncate text-slate-800">{item.name}</p>
@@ -129,9 +132,25 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
             <div className="border-t-2 border-slate-800 my-4" />
 
-            <div className="flex justify-between items-center text-xl font-black text-slate-900">
-              <span>TOTAL</span>
-              <span>{formatCurrency(data.total)}</span>
+            {/* Rincian Pembayaran */}
+            <div className="space-y-1">
+              <div className="flex justify-between items-center text-xl font-black text-slate-900">
+                <span>TOTAL</span>
+                <span>{formatCurrency(data.total)}</span>
+              </div>
+              
+              {data.payment_amount !== undefined && data.change_amount !== undefined && (
+                <>
+                  <div className="flex justify-between items-center text-sm text-slate-600 mt-2">
+                    <span>TUNAI</span>
+                    <span>{formatCurrency(data.payment_amount)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-slate-600">
+                    <span>KEMBALI</span>
+                    <span className="font-bold">{formatCurrency(data.change_amount)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="border-b-2 border-dashed border-slate-300 my-4" />
@@ -142,13 +161,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               <p>tidak dapat ditukar/dikembalikan.</p>
             </div>
             
-            {/* NAMA APLIKASI (Kecil di bawah) */}
             <div className="hidden print:block text-center text-[8px] text-slate-300 mt-6 uppercase tracking-wider">
               Powered by Buku Saku App
             </div>
           </div>
 
-          {/* Footer Actions (Hidden when printing) */}
           <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-3 print:hidden">
             <Button variant="secondary" className="flex-1" onClick={handlePrint}>
               <Printer size={18} className="mr-2" />
