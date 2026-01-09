@@ -17,8 +17,8 @@ interface ReceiptData {
   id: string;
   date: string;
   total: number;
-  payment_amount?: number; // Baru
-  change_amount?: number;  // Baru
+  payment_amount?: number;
+  change_amount?: number;
   items: ReceiptItem[];
 }
 
@@ -59,7 +59,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
     }
     text += `--------------------------------\n`;
     text += `Terima kasih telah berbelanja!\n`;
-    text += `Barang tidak dapat ditukar.\n`;
+    text += `Barang tidak dapat ditukar.\n\n`;
+    
+    text += `--------------------------------\n`;
+    text += `TERSEDIA LAYANAN FASTPAY:\n`;
+    text += `✅ Tarik & Setor Tunai\n`;
+    text += `✅ Transfer Bank (Semua Bank)\n`;
+    text += `✅ Pulsa, Paket Data, Token PLN\n`;
+    text += `✅ Bayar PDAM, BPJS, Cicilan, dll\n`;
+    text += `--------------------------------\n\n`;
+    
+    text += `Jl. Kali Brantas No. 28, RT 003/RW 002\n`;
+    text += `Bendo, Kepanjenkidul, Kota Blitar\n`;
+    text += `Jawa Timur, 66116\n`;
     
     return text;
   };
@@ -155,13 +167,33 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
             <div className="border-b-2 border-dashed border-slate-300 my-4" />
 
-            <div className="text-center text-xs text-slate-400 mt-6 print:mt-8 space-y-1">
-              <p className="font-bold text-slate-600">TERIMA KASIH</p>
-              <p>Barang yang sudah dibeli</p>
-              <p>tidak dapat ditukar/dikembalikan.</p>
+            {/* Footer Pesan & Promo */}
+            <div className="text-center space-y-4 mt-6 print:mt-6">
+              <div className="text-xs text-slate-500">
+                <p className="font-bold text-slate-700">TERIMA KASIH</p>
+                <p>Barang yang sudah dibeli</p>
+                <p>tidak dapat ditukar/dikembalikan.</p>
+              </div>
+
+              {/* Promo Fastpay */}
+              <div className="border-t border-b border-slate-200 py-3 my-2">
+                <p className="font-bold text-xs text-slate-800 mb-1">TERSEDIA LAYANAN FASTPAY</p>
+                <p className="text-[10px] text-slate-500 leading-tight">
+                  Tarik & Setor Tunai • Transfer Bank<br/>
+                  Pulsa • Paket Data • Token PLN<br/>
+                  Bayar PDAM • BPJS • Cicilan • Topup E-Wallet
+                </p>
+              </div>
+
+              {/* Alamat Toko */}
+              <div className="text-[9px] text-slate-400 uppercase leading-tight px-4">
+                Jl. Kali Brantas No. 28, RT 003/RW 002<br/>
+                Bendo, Kepanjenkidul, Kota Blitar<br/>
+                Jawa Timur, 66116
+              </div>
             </div>
             
-            <div className="hidden print:block text-center text-[8px] text-slate-300 mt-6 uppercase tracking-wider">
+            <div className="hidden print:block text-center text-[8px] text-slate-300 mt-4 uppercase tracking-wider">
               Powered by Buku Saku App
             </div>
           </div>
