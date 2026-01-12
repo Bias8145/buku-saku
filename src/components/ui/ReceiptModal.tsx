@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Printer, Share2, CheckCircle2, FileDown, Loader2, Settings2, Receipt as ReceiptIcon } from 'lucide-react';
+import { X, Printer, Share2, CheckCircle2, FileDown, Loader2, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -48,7 +48,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
   if (!isOpen || !data) return null;
 
   // --- TEKNIK PRINT IFRAME ISOLATION ---
-  // Kita membuat dokumen HTML baru yang bersih, hanya berisi struk, lalu di-print.
   const handlePrint = () => {
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
@@ -76,6 +75,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             .font-bold { font-weight: bold; }
             .text-sm { font-size: 10px; }
             .text-xs { font-size: 9px; }
+            .address { font-size: 8px; line-height: 1.2; padding: 0 5px; word-wrap: break-word; }
             .border-dashed { border-bottom: 1px dashed #000; margin: 5px 0; }
             .flex { display: flex; justify-content: space-between; }
             .mb-1 { margin-bottom: 2px; }
@@ -86,8 +86,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           <div class="receipt">
             <div class="text-center">
               <div class="font-bold" style="font-size: 14px; margin-bottom: 2px;">28 POINT</div>
-              <div class="text-xs">Store & Management</div>
-              <div class="text-xs">Jl. Kali Brantas No. 28, Blitar</div>
+              <div class="text-xs" style="margin-bottom: 2px;">Store & Management</div>
+              <div class="address">
+                Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
+              </div>
             </div>
             
             <div class="border-dashed"></div>
@@ -150,11 +152,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
     doc.write(content);
     doc.close();
 
-    // Tunggu gambar/font load sebentar lalu print
     setTimeout(() => {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
-      // Hapus iframe setelah print dialog tertutup (atau timeout)
       setTimeout(() => {
         document.body.removeChild(iframe);
       }, 1000);
@@ -166,11 +166,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
     setIsGeneratingPdf(true);
     
     try {
-      // Clone elemen preview agar bersih dari style modal saat dicapture
       const element = previewRef.current;
-      
       const canvas = await html2canvas(element, {
-        scale: 3, // High resolution
+        scale: 3, 
         useCORS: true,
         backgroundColor: '#ffffff',
         logging: false
@@ -199,10 +197,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
   };
 
   const generateReceiptText = () => {
-    // ... (Logika text share sama seperti sebelumnya)
     const dateStr = format(new Date(data.date), 'dd/MM/yyyy HH:mm', { locale: id });
     const line = "-".repeat(32);
-    let text = `28 POINT\nStore & Management\n${line}\n`;
+    let text = `28 POINT\nStore & Management\nJl. Kali Brantas No. 28, Blitar\n${line}\n`;
     text += `Tgl : ${dateStr}\nNo  : ${data.id.slice(0, 8).toUpperCase()}\n${line}\n`;
     data.items.forEach(item => {
       text += `${item.name}\n${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(item.qty * item.price)}\n`;
@@ -250,10 +247,11 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             <div className="flex gap-2">
               <button 
                 onClick={() => setShowSettings(!showSettings)} 
-                className={`p-2 rounded-xl transition-all ${showSettings ? 'bg-blue-100 text-blue-600' : 'hover:bg-slate-100 text-slate-400 hover:text-slate-600'}`}
-                title="Pengaturan Kertas"
+                className={`flex items-center gap-2 px-3 py-2 rounded-xl transition-all text-xs font-bold ${showSettings ? 'bg-blue-100 text-blue-600' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'}`}
               >
-                <Settings2 size={20} />
+                <Settings2 size={16} />
+                <span>Kertas</span>
+                {showSettings ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               </button>
               <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors">
                 <X size={20} />
@@ -271,31 +269,33 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
                 className="bg-white border-b border-slate-200 overflow-hidden shrink-0 z-10"
               >
                 <div className="p-4 bg-slate-50/50">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ukuran Kertas</p>
-                  <div className="grid grid-cols-1 gap-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Pilih Ukuran Kertas</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {PAPER_SIZES.map(size => (
                       <button
                         key={size.id}
                         onClick={() => setPaperWidth(size.width)}
                         className={cn(
-                          "flex items-center gap-3 p-3 rounded-xl border transition-all text-left relative",
+                          "flex flex-col items-start p-3 rounded-xl border transition-all text-left relative h-full",
                           paperWidth === size.width 
-                            ? "bg-white border-blue-500 shadow-md shadow-blue-500/10" 
-                            : "bg-white border-slate-200 hover:bg-slate-50"
+                            ? "bg-white border-blue-500 shadow-md shadow-blue-500/10 ring-1 ring-blue-500" 
+                            : "bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300"
                         )}
                       >
-                        <div className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0",
-                          paperWidth === size.width ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-500"
-                        )}>
-                          {size.label}
+                        <div className="flex justify-between w-full mb-1">
+                          <span className={cn(
+                            "text-sm font-bold",
+                            paperWidth === size.width ? "text-blue-600" : "text-slate-700"
+                          )}>
+                            {size.label}
+                          </span>
+                          {paperWidth === size.width && (
+                            <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5" />
+                          )}
                         </div>
-                        <div>
-                          <p className={cn("font-bold text-xs", paperWidth === size.width ? "text-slate-800" : "text-slate-600")}>
-                            {size.desc}
-                          </p>
-                        </div>
-                        {paperWidth === size.width && <CheckCircle2 size={16} className="absolute right-3 text-blue-500" />}
+                        <p className="text-[10px] text-slate-500 leading-tight font-medium w-full break-words">
+                          {size.desc}
+                        </p>
                       </button>
                     ))}
                   </div>
@@ -304,9 +304,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             )}
           </AnimatePresence>
 
-          {/* Preview Area (Estetik) */}
+          {/* Preview Area */}
           <div className="flex-1 overflow-y-auto p-8 bg-[#d1d5db] relative flex justify-center items-start shadow-inner">
-            {/* Kertas Struk */}
             <div 
               ref={previewRef}
               className="bg-white shadow-2xl relative transition-all duration-300 shrink-0 text-slate-900"
@@ -333,8 +332,10 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               <div className="p-4 pt-6 pb-6 font-mono text-[10px] leading-tight">
                 <div className="text-center mb-4">
                   <h1 className="font-bold text-sm mb-1">28 POINT</h1>
-                  <p className="text-[9px] text-slate-500">Store & Management</p>
-                  <p className="text-[9px]">Jl. Kali Brantas No. 28, Blitar</p>
+                  <p className="text-[9px] text-slate-500 mb-1">Store & Management</p>
+                  <p className="text-[8px] leading-tight px-2 break-words">
+                    Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
+                  </p>
                 </div>
 
                 <div className="border-b border-dashed border-slate-300 my-2" />
