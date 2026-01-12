@@ -1,7 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Printer, Share2, CheckCircle2, FileDown, Loader2, Settings2, ChevronDown, Receipt as ReceiptIcon } from 'lucide-react';
+import { X, Printer, Share2, CheckCircle2, FileDown, Loader2, Settings2, Receipt as ReceiptIcon } from 'lucide-react';
 import { formatCurrency, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
@@ -31,47 +30,150 @@ interface ReceiptModalProps {
   data: ReceiptData | null;
 }
 
-// Referensi Ukuran Kertas Lengkap
 const PAPER_SIZES = [
-  { id: '57mm', width: 57, label: '57mm', desc: 'Mesin EDC / Printer Mini' },
-  { id: '58mm', width: 58, label: '58mm', desc: 'Printer Mobile (Standar)' },
+  { id: '58mm', width: 58, label: '58mm', desc: 'Printer Mobile / Bluetooth' },
+  { id: '80mm', width: 80, label: '80mm', desc: 'Printer Kasir Desktop' },
   { id: '76mm', width: 76, label: '76mm', desc: 'Printer Dot Matrix' },
-  { id: '80mm', width: 80, label: '80mm', desc: 'POS Desktop / Supermarket' },
 ];
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, data }) => {
   const { showToast } = useToast();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
-  const [paperWidth, setPaperWidth] = useState(58); // Default 58mm
+  const [paperWidth, setPaperWidth] = useState(58);
   const [showSettings, setShowSettings] = useState(false);
   
-  // Ref untuk elemen yang akan di-capture (PDF) dan di-print
-  const printContentRef = useRef<HTMLDivElement>(null);
+  // Ref untuk elemen visual di layar (Preview)
+  const previewRef = useRef<HTMLDivElement>(null);
 
   if (!isOpen || !data) return null;
 
+  // --- TEKNIK PRINT IFRAME ISOLATION ---
+  // Kita membuat dokumen HTML baru yang bersih, hanya berisi struk, lalu di-print.
   const handlePrint = () => {
-    // Browser print dialog akan menggunakan CSS @media print
-    window.print();
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    document.body.appendChild(iframe);
+    
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+
+    // Generate HTML Struk
+    const content = `
+      <html>
+        <head>
+          <title>Struk Belanja</title>
+          <style>
+            @page { margin: 0; size: auto; }
+            body { 
+              margin: 0; 
+              padding: 0; 
+              font-family: 'Courier New', Courier, monospace; 
+              width: ${paperWidth}mm;
+            }
+            .receipt { width: 100%; padding: 10px 0; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-bold { font-weight: bold; }
+            .text-sm { font-size: 10px; }
+            .text-xs { font-size: 9px; }
+            .border-dashed { border-bottom: 1px dashed #000; margin: 5px 0; }
+            .flex { display: flex; justify-content: space-between; }
+            .mb-1 { margin-bottom: 2px; }
+            .item-row { margin-bottom: 4px; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            <div class="text-center">
+              <div class="font-bold" style="font-size: 14px; margin-bottom: 2px;">28 POINT</div>
+              <div class="text-xs">Store & Management</div>
+              <div class="text-xs">Jl. Kali Brantas No. 28, Blitar</div>
+            </div>
+            
+            <div class="border-dashed"></div>
+            
+            <div class="flex text-xs">
+              <span>${format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
+              <span>#${data.id.slice(0, 6).toUpperCase()}</span>
+            </div>
+            
+            <div class="border-dashed"></div>
+            
+            <div class="items">
+              ${data.items.map(item => `
+                <div class="item-row text-sm">
+                  <div class="font-bold">${item.name}</div>
+                  <div class="flex">
+                    <span>${item.qty} x ${new Intl.NumberFormat('id-ID').format(item.price)}</span>
+                    <span>${new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+            
+            <div class="border-dashed"></div>
+            
+            <div class="text-sm">
+              <div class="flex font-bold">
+                <span>TOTAL</span>
+                <span>${formatCurrency(data.total)}</span>
+              </div>
+              ${data.payment_amount !== undefined ? `
+                <div class="flex">
+                  <span>TUNAI</span>
+                  <span>${formatCurrency(data.payment_amount)}</span>
+                </div>
+                <div class="flex">
+                  <span>KEMBALI</span>
+                  <span>${formatCurrency(data.change_amount || 0)}</span>
+                </div>
+              ` : ''}
+            </div>
+            
+            <div class="border-dashed"></div>
+            
+            <div class="text-center text-xs" style="margin-top: 10px;">
+              <div class="font-bold">LAYANAN TERSEDIA:</div>
+              <div style="font-size: 8px; margin-bottom: 5px;">
+                Tarik Tunai • Transfer Bank • Pulsa<br/>
+                Token Listrik • PDAM • BPJS • Topup
+              </div>
+              <div>Terima Kasih</div>
+              <div style="font-size: 8px; margin-top: 5px; color: #555;">Powered by Buku Saku App</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    doc.open();
+    doc.write(content);
+    doc.close();
+
+    // Tunggu gambar/font load sebentar lalu print
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      // Hapus iframe setelah print dialog tertutup (atau timeout)
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 500);
   };
 
   const handleSavePdf = async () => {
-    if (!printContentRef.current) return;
+    if (!previewRef.current) return;
     setIsGeneratingPdf(true);
     
     try {
-      const element = printContentRef.current;
+      // Clone elemen preview agar bersih dari style modal saat dicapture
+      const element = previewRef.current;
       
-      // Tunggu sebentar agar rendering stabil
-      await new Promise(resolve => setTimeout(resolve, 100));
-
       const canvas = await html2canvas(element, {
-        scale: 2, // Resolusi tinggi
+        scale: 3, // High resolution
         useCORS: true,
-        logging: false,
         backgroundColor: '#ffffff',
-        windowWidth: element.scrollWidth, // Pastikan capture sesuai lebar konten
-        height: element.scrollHeight // Capture seluruh panjang
+        logging: false
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.9);
@@ -81,7 +183,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [pdfWidth, pdfHeight], // Ukuran PDF dinamis sesuai panjang struk
+        format: [pdfWidth, pdfHeight],
         compress: true 
       });
 
@@ -97,30 +199,19 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
   };
 
   const generateReceiptText = () => {
+    // ... (Logika text share sama seperti sebelumnya)
     const dateStr = format(new Date(data.date), 'dd/MM/yyyy HH:mm', { locale: id });
     const line = "-".repeat(32);
-    
-    let text = `28 POINT\n`;
-    text += `Store & Management\n`;
-    text += `${line}\n`;
-    text += `Tgl : ${dateStr}\n`;
-    text += `No  : ${data.id.slice(0, 8).toUpperCase()}\n`;
-    text += `${line}\n`;
-    
+    let text = `28 POINT\nStore & Management\n${line}\n`;
+    text += `Tgl : ${dateStr}\nNo  : ${data.id.slice(0, 8).toUpperCase()}\n${line}\n`;
     data.items.forEach(item => {
-      text += `${item.name}\n`;
-      const subtotal = item.qty * item.price;
-      text += `${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(subtotal)}\n`;
+      text += `${item.name}\n${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(item.qty * item.price)}\n`;
     });
-    
-    text += `${line}\n`;
-    text += `TOTAL   : ${formatCurrency(data.total)}\n`;
-    if (data.payment_amount !== undefined) {
-      text += `TUNAI   : ${formatCurrency(data.payment_amount)}\n`;
-      text += `KEMBALI : ${formatCurrency(data.change_amount || 0)}\n`;
+    text += `${line}\nTOTAL   : ${formatCurrency(data.total)}\n`;
+    if (data.payment_amount) {
+      text += `TUNAI   : ${formatCurrency(data.payment_amount)}\nKEMBALI : ${formatCurrency(data.change_amount || 0)}\n`;
     }
-    text += `${line}\n`;
-    text += `Terima Kasih\n`;
+    text += `${line}\nTerima Kasih\n`;
     return text;
   };
 
@@ -137,9 +228,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm print:hidden">
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
         
-        {/* === MODAL PREVIEW (UI) === */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -147,14 +237,14 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           className="bg-slate-100 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         >
           {/* Header */}
-          <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-slate-200 shrink-0">
+          <div className="bg-white px-5 py-4 flex justify-between items-center border-b border-slate-200 shrink-0 z-20">
             <div className="flex items-center gap-3">
               <div className="bg-emerald-100 text-emerald-600 p-2 rounded-xl">
                 <CheckCircle2 size={20} strokeWidth={2.5} />
               </div>
               <div>
                 <h3 className="font-bold text-slate-800 text-sm">Transaksi Berhasil</h3>
-                <p className="text-[10px] text-slate-500 font-medium">Siap dicetak atau dibagikan</p>
+                <p className="text-[10px] text-slate-500 font-medium">Siap dicetak</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -171,49 +261,41 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             </div>
           </div>
 
-          {/* Settings Panel (Collapsible) */}
+          {/* Settings Panel */}
           <AnimatePresence>
             {showSettings && (
               <motion.div 
                 initial={{ height: 0, opacity: 0 }} 
                 animate={{ height: 'auto', opacity: 1 }} 
                 exit={{ height: 0, opacity: 0 }} 
-                className="bg-white border-b border-slate-200 overflow-hidden"
+                className="bg-white border-b border-slate-200 overflow-hidden shrink-0 z-10"
               >
-                <div className="p-5 bg-slate-50/50">
-                  <div className="flex items-center gap-2 mb-3">
-                    <ReceiptIcon size={14} className="text-slate-400" />
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pilih Ukuran Kertas</p>
-                  </div>
+                <div className="p-4 bg-slate-50/50">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Ukuran Kertas</p>
                   <div className="grid grid-cols-1 gap-2">
                     {PAPER_SIZES.map(size => (
                       <button
                         key={size.id}
                         onClick={() => setPaperWidth(size.width)}
                         className={cn(
-                          "flex items-center gap-3 p-3 rounded-xl border transition-all text-left relative overflow-hidden",
+                          "flex items-center gap-3 p-3 rounded-xl border transition-all text-left relative",
                           paperWidth === size.width 
-                            ? "bg-white border-blue-500 shadow-md shadow-blue-500/10 z-10" 
-                            : "bg-white border-slate-200 hover:border-slate-300 hover:bg-slate-50"
+                            ? "bg-white border-blue-500 shadow-md shadow-blue-500/10" 
+                            : "bg-white border-slate-200 hover:bg-slate-50"
                         )}
                       >
                         <div className={cn(
-                          "w-10 h-10 rounded-lg flex items-center justify-center text-xs font-bold shrink-0",
+                          "w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0",
                           paperWidth === size.width ? "bg-blue-50 text-blue-600" : "bg-slate-100 text-slate-500"
                         )}>
                           {size.label}
                         </div>
                         <div>
-                          <p className={cn("font-bold text-sm", paperWidth === size.width ? "text-slate-800" : "text-slate-600")}>
+                          <p className={cn("font-bold text-xs", paperWidth === size.width ? "text-slate-800" : "text-slate-600")}>
                             {size.desc}
                           </p>
-                          <p className="text-[10px] text-slate-400">Lebar {size.width}mm</p>
                         </div>
-                        {paperWidth === size.width && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-500">
-                            <CheckCircle2 size={18} />
-                          </div>
-                        )}
+                        {paperWidth === size.width && <CheckCircle2 size={16} className="absolute right-3 text-blue-500" />}
                       </button>
                     ))}
                   </div>
@@ -222,42 +304,104 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             )}
           </AnimatePresence>
 
-          {/* Preview Area */}
-          <div className="flex-1 overflow-y-auto p-6 bg-[#e2e8f0] relative flex justify-center items-start shadow-inner">
-            {/* Kertas Struk Visual */}
+          {/* Preview Area (Estetik) */}
+          <div className="flex-1 overflow-y-auto p-8 bg-[#d1d5db] relative flex justify-center items-start shadow-inner">
+            {/* Kertas Struk */}
             <div 
-              className="bg-white shadow-2xl relative transition-all duration-300 shrink-0"
+              ref={previewRef}
+              className="bg-white shadow-2xl relative transition-all duration-300 shrink-0 text-slate-900"
               style={{ 
                 width: `${paperWidth}mm`, 
                 minHeight: '200px',
-                transform: 'scale(1)', // Bisa ditambahkan fitur zoom nanti
-                transformOrigin: 'top center'
               }}
             >
-              {/* Tekstur Kertas Halus */}
-              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/paper-fibers.png')] opacity-30 pointer-events-none mix-blend-multiply"></div>
+              {/* Zigzag Top */}
+              <div 
+                className="absolute -top-2 left-0 w-full h-4 bg-white"
+                style={{
+                   maskImage: 'linear-gradient(45deg, transparent 50%, black 50%), linear-gradient(-45deg, transparent 50%, black 50%)',
+                   maskSize: '10px 10px',
+                   maskRepeat: 'repeat-x',
+                   WebkitMaskImage: 'linear-gradient(45deg, transparent 50%, black 50%), linear-gradient(-45deg, transparent 50%, black 50%)',
+                   WebkitMaskSize: '10px 10px',
+                   WebkitMaskRepeat: 'repeat-x',
+                   transform: 'rotate(180deg)'
+                }}
+              />
 
-              {/* Efek Sobekan Atas */}
-              <div className="absolute -top-1.5 left-0 right-0 h-3 bg-white" style={{ 
-                maskImage: 'linear-gradient(45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%), linear-gradient(-45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%)',
-                maskSize: '12px 20px',
-                WebkitMaskImage: 'linear-gradient(45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%), linear-gradient(-45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%)',
-                WebkitMaskSize: '12px 20px',
-                transform: 'rotate(180deg)'
-              }}></div>
-              
-              {/* Konten Struk */}
-              <div className="relative z-10">
-                <ReceiptContent data={data} width={paperWidth} />
+              {/* Konten Struk Visual */}
+              <div className="p-4 pt-6 pb-6 font-mono text-[10px] leading-tight">
+                <div className="text-center mb-4">
+                  <h1 className="font-bold text-sm mb-1">28 POINT</h1>
+                  <p className="text-[9px] text-slate-500">Store & Management</p>
+                  <p className="text-[9px]">Jl. Kali Brantas No. 28, Blitar</p>
+                </div>
+
+                <div className="border-b border-dashed border-slate-300 my-2" />
+                
+                <div className="flex justify-between text-[9px] text-slate-500 mb-2">
+                  <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
+                  <span>#{data.id.slice(0, 6).toUpperCase()}</span>
+                </div>
+
+                <div className="space-y-2 mb-4">
+                  {data.items.map((item, i) => (
+                    <div key={i}>
+                      <div className="font-bold mb-0.5">{item.name}</div>
+                      <div className="flex justify-between pl-2">
+                        <span className="text-slate-500">{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</span>
+                        <span className="font-medium">{new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-dashed border-slate-300 py-2 space-y-1">
+                  <div className="flex justify-between font-bold text-xs">
+                    <span>TOTAL</span>
+                    <span>{formatCurrency(data.total)}</span>
+                  </div>
+                  {data.payment_amount !== undefined && (
+                    <>
+                      <div className="flex justify-between pt-1 text-slate-600">
+                        <span>TUNAI</span>
+                        <span>{formatCurrency(data.payment_amount)}</span>
+                      </div>
+                      <div className="flex justify-between text-slate-600">
+                        <span>KEMBALI</span>
+                        <span>{formatCurrency(data.change_amount || 0)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className="text-center mt-6 space-y-2">
+                  <div className="border-y border-dashed border-slate-200 py-2 bg-slate-50 -mx-4 px-4">
+                    <p className="font-bold text-[9px] mb-1">LAYANAN TERSEDIA:</p>
+                    <p className="text-[8px] leading-snug text-slate-500">
+                      Tarik Tunai • Transfer Bank • Pulsa<br/>
+                      Token Listrik • PDAM • BPJS • Topup
+                    </p>
+                  </div>
+                  <div className="pt-2">
+                    <p className="font-medium">Terima Kasih</p>
+                    <p className="text-[8px] text-slate-400 mt-1">Powered by Buku Saku App</p>
+                  </div>
+                </div>
               </div>
 
-              {/* Efek Sobekan Bawah */}
-              <div className="absolute -bottom-1.5 left-0 right-0 h-3 bg-white" style={{ 
-                maskImage: 'linear-gradient(45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%), linear-gradient(-45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%)',
-                maskSize: '12px 20px',
-                WebkitMaskImage: 'linear-gradient(45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%), linear-gradient(-45deg, transparent 33.33%, #000 33.33%, #000 66.67%, transparent 66.67%)',
-                WebkitMaskSize: '12px 20px'
-              }}></div>
+              {/* Zigzag Bottom */}
+              <div 
+                className="absolute -bottom-2 left-0 w-full h-4 bg-white"
+                style={{
+                   maskImage: 'linear-gradient(45deg, transparent 50%, black 50%), linear-gradient(-45deg, transparent 50%, black 50%)',
+                   maskSize: '10px 10px',
+                   maskRepeat: 'repeat-x',
+                   WebkitMaskImage: 'linear-gradient(45deg, transparent 50%, black 50%), linear-gradient(-45deg, transparent 50%, black 50%)',
+                   WebkitMaskSize: '10px 10px',
+                   WebkitMaskRepeat: 'repeat-x'
+                }}
+              />
             </div>
           </div>
 
@@ -275,143 +419,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           </div>
         </motion.div>
       </div>
-
-      {/* === HIDDEN PRINT AREA (PORTAL) === */}
-      {/* Ini adalah kunci agar print tidak blank. Kita render langsung ke body, di luar modal */}
-      {createPortal(
-        <div className="print-portal">
-          <style>{`
-            @media print {
-              @page {
-                margin: 0;
-                size: auto;
-              }
-              body {
-                background: white;
-              }
-              /* Sembunyikan semua konten aplikasi */
-              body > *:not(.print-portal) {
-                display: none !important;
-              }
-              /* Tampilkan hanya portal print */
-              .print-portal {
-                display: block !important;
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: auto;
-                height: auto;
-                background: white;
-                z-index: 9999;
-              }
-            }
-            /* Sembunyikan portal di layar normal */
-            @media screen {
-              .print-portal {
-                display: none;
-              }
-            }
-          `}</style>
-          
-          {/* Container untuk Print & PDF Capture */}
-          <div 
-            ref={printContentRef} 
-            style={{ 
-              width: `${paperWidth}mm`,
-              backgroundColor: 'white',
-              padding: 0,
-              margin: 0
-            }}
-          >
-            <ReceiptContent data={data} width={paperWidth} isPrintMode />
-          </div>
-        </div>,
-        document.body
-      )}
     </AnimatePresence>
-  );
-};
-
-// Komponen Konten Struk (Re-usable & Presisi)
-const ReceiptContent = ({ data, width, isPrintMode = false }: { data: ReceiptData, width: number, isPrintMode?: boolean }) => {
-  // Ukuran font dinamis berdasarkan lebar kertas
-  const fontSize = width < 60 ? '10px' : '12px';
-  const lineHeight = width < 60 ? '1.2' : '1.3';
-  const padding = isPrintMode ? '0px' : '16px';
-  
-  return (
-    <div 
-      className="font-mono text-black leading-tight"
-      style={{ 
-        fontSize, 
-        lineHeight,
-        padding,
-        width: '100%',
-        boxSizing: 'border-box',
-        color: '#000000' // Pastikan hitam pekat untuk print
-      }}
-    >
-      {/* Header */}
-      <div className="text-center mb-4">
-        <h1 className="font-bold uppercase tracking-wider mb-1" style={{ fontSize: width < 60 ? '14px' : '16px' }}>28 POINT</h1>
-        <p className="text-[9px]">Store & Management</p>
-        <p className="text-[9px] mt-0.5">Jl. Kali Brantas No. 28, Blitar</p>
-      </div>
-
-      {/* Meta */}
-      <div className="border-t border-b border-dashed border-black/50 py-2 my-2 flex justify-between" style={{ fontSize: width < 60 ? '9px' : '10px' }}>
-        <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
-        <span>#{data.id.slice(0, 6).toUpperCase()}</span>
-      </div>
-
-      {/* Items */}
-      <div className="space-y-2 mb-4">
-        {data.items.map((item, i) => (
-          <div key={i}>
-            <div className="font-bold truncate mb-0.5">{item.name}</div>
-            <div className="flex justify-between pl-2 text-slate-800 print:text-black">
-              <span>{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</span>
-              <span className="font-medium text-black">{new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Totals */}
-      <div className="border-t border-dashed border-black/50 py-2 space-y-1">
-        <div className="flex justify-between font-bold" style={{ fontSize: width < 60 ? '12px' : '14px' }}>
-          <span>TOTAL</span>
-          <span>{formatCurrency(data.total)}</span>
-        </div>
-        {data.payment_amount !== undefined && (
-          <>
-            <div className="flex justify-between pt-1">
-              <span>TUNAI</span>
-              <span>{formatCurrency(data.payment_amount)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>KEMBALI</span>
-              <span>{formatCurrency(data.change_amount || 0)}</span>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Footer */}
-      <div className="text-center mt-6 space-y-3">
-        <div className="border-t border-b border-dashed border-black/50 py-2">
-          <p className="font-bold mb-1" style={{ fontSize: '9px' }}>LAYANAN TERSEDIA:</p>
-          <p className="text-[8px] leading-snug text-slate-800 print:text-black">
-            Tarik Tunai • Transfer Bank • Pulsa<br/>
-            Token Listrik • PDAM • BPJS • Topup
-          </p>
-        </div>
-        <div>
-          <p className="font-medium mb-1" style={{ fontSize: '10px' }}>Terima Kasih</p>
-          <p className="text-[8px] text-slate-500 print:text-black">Simpan struk ini sebagai bukti pembayaran yang sah</p>
-        </div>
-        <p className="text-[7px] uppercase pt-2 text-slate-300 print:text-black/50">Powered by Buku Saku App</p>
-      </div>
-    </div>
   );
 };
