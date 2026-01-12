@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Printer, Share2, CheckCircle2, FileDown, Loader2 } from 'lucide-react';
-import { formatCurrency } from '../../lib/utils';
+import { X, Printer, Share2, CheckCircle2, FileDown, Loader2, Settings2, ChevronDown } from 'lucide-react';
+import { formatCurrency, cn } from '../../lib/utils';
 import { format } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { Button } from './Button';
@@ -30,9 +30,19 @@ interface ReceiptModalProps {
   data: ReceiptData | null;
 }
 
+const PAPER_SIZES = [
+  { label: '58mm (Struk Kecil/Mobile)', width: 58, type: 'roll' },
+  { label: '80mm (Struk Besar/Desktop)', width: 80, type: 'roll' },
+  { label: '76mm (Dot Matrix)', width: 76, type: 'roll' },
+  { label: '57mm (EDC/Mini)', width: 57, type: 'roll' },
+  { label: '100mm (Label/Resi)', width: 100, type: 'label' },
+];
+
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, data }) => {
   const { showToast } = useToast();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [paperWidth, setPaperWidth] = useState(58); // Default 58mm
+  const [showSettings, setShowSettings] = useState(false);
 
   if (!isOpen || !data) return null;
 
@@ -46,34 +56,45 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
     setIsGeneratingPdf(true);
     try {
-      // 1. Capture elemen struk
-      // Optimasi: Gunakan scale 2 (cukup tajam untuk struk, file lebih kecil)
+      // 1. Capture elemen struk dengan setting optimal
       const canvas = await html2canvas(element, {
         scale: 2, 
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
+        // Paksa ukuran canvas sesuai konten agar tidak ada whitespace
         windowWidth: element.scrollWidth,
-        windowHeight: element.scrollHeight
+        windowHeight: element.scrollHeight,
+        onclone: (documentClone) => {
+          // Fix styling saat cloning untuk PDF
+          const el = documentClone.getElementById('receipt-content');
+          if (el) {
+            el.style.transform = 'none';
+            el.style.position = 'static';
+            el.style.margin = '0';
+            // Pastikan width saat capture sesuai setting
+            el.style.width = `${paperWidth}mm`;
+          }
+        }
       });
 
-      // Optimasi: Gunakan JPEG dengan kualitas 0.8 (jauh lebih ringan dari PNG)
       const imgData = canvas.toDataURL('image/jpeg', 0.8);
       
-      const pdfWidth = 58; 
+      // Hitung rasio aspek untuk PDF panjang (seperti struk asli)
+      const pdfWidth = paperWidth; // mm (Dynamic based on selection)
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
-        format: [pdfWidth, pdfHeight],
-        compress: true // Aktifkan kompresi
+        format: [pdfWidth, pdfHeight], // Ukuran kertas dinamis sesuai panjang struk
+        compress: true 
       });
 
       pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
       pdf.save(`Struk-28POINT-${data.id.slice(0, 8)}.pdf`);
       
-      showToast("PDF berhasil disimpan (Hemat Penyimpanan)!", "success");
+      showToast("PDF berhasil disimpan!", "success");
     } catch (error) {
       console.error("PDF Error:", error);
       showToast("Gagal membuat PDF", "error");
@@ -145,14 +166,17 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:bg-white print:p-0 print:block print:static print:inset-auto print:h-auto">
-        {/* CSS Khusus Print & PDF Generation */}
+      {/* Wrapper Modal Utama */}
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print-container">
+        {/* CSS Khusus Print Dinamis */}
         <style>{`
           @media print {
             @page {
               margin: 0;
               size: auto;
             }
+            
+            /* Reset root elements */
             html, body {
               height: auto !important;
               overflow: visible !important;
@@ -160,29 +184,58 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               padding: 0 !important;
               background: white !important;
             }
-            /* Sembunyikan semua elemen kecuali struk */
+
+            /* Sembunyikan semua elemen halaman */
             body * {
               visibility: hidden;
             }
-            /* Tampilkan struk dan atur posisi absolute ke pojok kiri atas */
+
+            /* Reset container modal agar tidak mempengaruhi layout print */
+            .print-container {
+              position: static !important;
+              display: block !important;
+              background: none !important;
+              padding: 0 !important;
+              margin: 0 !important;
+              width: auto !important;
+              height: auto !important;
+            }
+
+            /* Reset kartu modal (hilangkan transform dan centering) */
+            .print-card {
+              position: static !important;
+              transform: none !important;
+              box-shadow: none !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              width: auto !important;
+              max-width: none !important;
+              border-radius: 0 !important;
+            }
+
+            /* Tampilkan HANYA konten struk */
             #receipt-content, #receipt-content * {
               visibility: visible;
             }
+
+            /* Posisikan struk di pojok kiri atas kertas */
             #receipt-content {
-              position: absolute;
-              left: 0;
-              top: 0;
-              width: 58mm;
-              padding: 0;
-              margin: 0;
-              /* Gunakan font sans-serif standar agar render lebih aman */
-              font-family: 'Arial', sans-serif; 
-              font-size: 10px;
-              line-height: 1.3; /* Jarak antar baris diperlonggar agar tidak overlap */
-              color: black;
-              background: white;
-              page-break-inside: avoid; 
+              position: absolute !important;
+              left: 0 !important;
+              top: 0 !important;
+              width: ${paperWidth}mm !important; /* Lebar Dinamis */
+              margin: 0 !important;
+              padding: 0 !important;
+              
+              /* Styling teks print */
+              font-family: 'Arial', sans-serif !important; 
+              font-size: 10px !important;
+              line-height: 1.3 !important;
+              color: black !important;
+              background: white !important;
             }
+
+            /* Sembunyikan elemen non-print */
             .no-print {
               display: none !important;
             }
@@ -193,101 +246,162 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           initial={{ opacity: 0, scale: 0.9, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 10 }}
-          className="bg-white text-slate-900 w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl print:shadow-none print:w-auto print:max-w-none print:rounded-none print:overflow-visible"
+          className="bg-white text-slate-900 w-full max-w-md rounded-3xl overflow-hidden shadow-2xl print-card flex flex-col max-h-[90vh]"
         >
           {/* Header Actions */}
-          <div className="bg-slate-50 p-4 flex justify-between items-center border-b border-slate-100 no-print">
+          <div className="bg-slate-50 p-4 flex justify-between items-center border-b border-slate-100 no-print shrink-0">
             <h3 className="font-bold text-slate-700 flex items-center gap-2">
               <CheckCircle2 size={18} className="text-emerald-500" />
               Transaksi Sukses
             </h3>
-            <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => setShowSettings(!showSettings)}
+                className={cn(
+                  "p-2 rounded-full transition-colors",
+                  showSettings ? "bg-blue-100 text-blue-600" : "hover:bg-slate-200 text-slate-500"
+                )}
+                title="Pengaturan Kertas"
+              >
+                <Settings2 size={20} />
+              </button>
+              <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500">
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
-          {/* Receipt Content Area */}
-          {/* Menggunakan font sans-serif dan leading-relaxed untuk mencegah overlap */}
-          <div className="p-6 font-sans text-sm leading-relaxed print:p-2 bg-white print:w-[58mm]" id="receipt-content">
-            <div className="text-center mb-4 print:mb-2">
-              <h2 className="text-2xl font-black uppercase tracking-widest mb-1 print:text-lg">28 POINT</h2>
-              <p className="text-[10px] text-slate-500 print:text-[8px]">Store & Management</p>
-              
-              <div className="mt-3 text-[10px] text-slate-400 flex justify-between border-t border-b border-dashed border-slate-300 py-2 print:text-[8px] print:mt-1 print:py-1 print:border-black">
-                 <span>NO: {data.id.slice(0, 8).toUpperCase()}</span>
-                 <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
-              </div>
-            </div>
-
-            {/* Item List - Tambahkan gap vertikal */}
-            <div className="space-y-3 min-h-[50px] print:space-y-2 print:min-h-0">
-              {data.items.map((item, index) => (
-                <div key={index} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 last:pb-0 print:border-none print:pb-0">
-                  {/* Pastikan nama barang tidak overlap dengan harga */}
-                  <p className="font-bold text-slate-800 print:text-[9px] leading-snug mb-1">{item.name}</p>
-                  <div className="flex justify-between text-xs text-slate-500 print:text-[9px] print:text-black">
-                    <span>{item.qty} x {formatCurrency(item.price)}</span>
-                    <span className="font-bold text-slate-900 print:text-black">{formatCurrency(item.qty * item.price)}</span>
+          {/* Paper Settings Panel */}
+          <AnimatePresence>
+            {showSettings && (
+              <motion.div 
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="bg-slate-100 border-b border-slate-200 overflow-hidden no-print shrink-0"
+              >
+                <div className="p-4 space-y-3">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pilih Ukuran Kertas</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {PAPER_SIZES.map((size) => (
+                      <button
+                        key={size.width}
+                        onClick={() => {
+                          setPaperWidth(size.width);
+                          // setShowSettings(false); // Opsional: tutup setelah pilih
+                        }}
+                        className={cn(
+                          "flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all border",
+                          paperWidth === size.width
+                            ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-blue-300 hover:bg-blue-50"
+                        )}
+                      >
+                        <span>{size.label}</span>
+                        {paperWidth === size.width && <CheckCircle2 size={16} />}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ))}
-            </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-            <div className="border-t border-slate-800 my-4 print:my-2 print:border-black print:border-dashed" />
-
-            {/* Rincian Pembayaran */}
-            <div className="space-y-1 print:space-y-1">
-              <div className="flex justify-between items-center text-lg font-black text-slate-900 print:text-xs">
-                <span>TOTAL</span>
-                <span>{formatCurrency(data.total)}</span>
-              </div>
-              
-              {data.payment_amount !== undefined && data.change_amount !== undefined && (
-                <>
-                  <div className="flex justify-between items-center text-xs text-slate-600 mt-1 print:text-[9px] print:mt-0.5 print:text-black">
-                    <span>TUNAI</span>
-                    <span>{formatCurrency(data.payment_amount)}</span>
+          {/* Receipt Content Area - Scrollable */}
+          <div className="flex-1 overflow-y-auto bg-slate-100 p-4 flex justify-center">
+            <div 
+              className="bg-white shadow-sm transition-all duration-300 origin-top" 
+              id="receipt-content"
+              style={{ 
+                width: `${paperWidth}mm`,
+                minHeight: '100px',
+                padding: '15px' // Padding visual di layar
+              }}
+            >
+              <div className="font-sans text-sm leading-relaxed text-black">
+                <div className="text-center mb-4">
+                  <h2 className="text-2xl font-black uppercase tracking-widest mb-1">28 POINT</h2>
+                  <p className="text-[10px] text-slate-500">Store & Management</p>
+                  
+                  <div className="mt-3 text-[10px] text-slate-400 flex justify-between border-t border-b border-dashed border-slate-300 py-2" style={{ borderColor: 'black' }}>
+                     <span>NO: {data.id.slice(0, 8).toUpperCase()}</span>
+                     <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
                   </div>
-                  <div className="flex justify-between items-center text-xs text-slate-600 print:text-[9px] print:text-black">
-                    <span>KEMBALI</span>
-                    <span className="font-bold">{formatCurrency(data.change_amount)}</span>
+                </div>
+
+                {/* Item List */}
+                <div className="space-y-3 min-h-[50px]">
+                  {data.items.map((item, index) => (
+                    <div key={index} className="flex flex-col border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                      <p className="font-bold text-slate-800 leading-snug mb-1">{item.name}</p>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>{item.qty} x {formatCurrency(item.price)}</span>
+                        <span className="font-bold text-slate-900">{formatCurrency(item.qty * item.price)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="border-t border-slate-800 my-4" style={{ borderColor: 'black', borderStyle: 'dashed' }} />
+
+                {/* Rincian Pembayaran */}
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-lg font-black text-slate-900">
+                    <span>TOTAL</span>
+                    <span>{formatCurrency(data.total)}</span>
                   </div>
-                </>
-              )}
-            </div>
+                  
+                  {data.payment_amount !== undefined && data.change_amount !== undefined && (
+                    <>
+                      <div className="flex justify-between items-center text-xs text-slate-600 mt-1">
+                        <span>TUNAI</span>
+                        <span>{formatCurrency(data.payment_amount)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-slate-600">
+                        <span>KEMBALI</span>
+                        <span className="font-bold">{formatCurrency(data.change_amount)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
 
-            <div className="border-b border-dashed border-slate-300 my-4 print:my-2 print:border-black" />
+                <div className="border-b border-dashed border-slate-300 my-4" style={{ borderColor: 'black' }} />
 
-            {/* Footer */}
-            <div className="text-center space-y-3 mt-4 print:mt-2 print:space-y-2">
-              <div className="text-[10px] text-slate-500 print:text-[8px] print:text-black leading-tight">
-                <p className="font-bold text-slate-700 print:text-black mb-1">TERIMA KASIH</p>
-                <p>Barang yang sudah dibeli</p>
-                <p>tidak dapat ditukar/dikembalikan.</p>
+                {/* Footer */}
+                <div className="text-center space-y-3 mt-4">
+                  <div className="text-[10px] text-slate-500 leading-tight">
+                    <p className="font-bold text-slate-700 mb-1">TERIMA KASIH</p>
+                    <p>Barang yang sudah dibeli</p>
+                    <p>tidak dapat ditukar/dikembalikan.</p>
+                  </div>
+
+                  <div className="border-t border-b border-slate-200 py-2 my-2" style={{ borderColor: 'black', borderStyle: 'dashed' }}>
+                    <p className="font-bold text-[10px] text-slate-800 mb-1">TERSEDIA LAYANAN:</p>
+                    <p className="text-[9px] text-slate-500 leading-tight">
+                      Tarik & Setor Tunai • Transfer Bank<br/>
+                      Pulsa • Paket Data • Token PLN<br/>
+                      Bayar PDAM • BPJS • Cicilan • Topup E-Wallet
+                    </p>
+                  </div>
+
+                  <div className="text-[9px] text-slate-400 uppercase leading-tight px-4">
+                    Jl. Kali Brantas No. 28, RT 003/RW 002<br/>
+                    Bendo, Kepanjenkidul, Kota Blitar<br/>
+                    Jawa Timur, 66116
+                  </div>
+                </div>
+                
+                <div className="text-center text-[7px] text-slate-300 mt-2 uppercase tracking-wider no-print">
+                  Powered by Buku Saku App
+                </div>
+                 <div className="hidden print:block text-center text-[7px] text-black mt-2 uppercase tracking-wider">
+                  Powered by Buku Saku App
+                </div>
               </div>
-
-              <div className="border-t border-b border-slate-200 py-2 my-2 print:py-1 print:my-1 print:border-black print:border-dashed">
-                <p className="font-bold text-[10px] text-slate-800 mb-1 print:text-[8px] print:text-black">TERSEDIA LAYANAN:</p>
-                <p className="text-[9px] text-slate-500 leading-tight print:text-[8px] print:text-black">
-                  Tarik & Setor Tunai • Transfer Bank<br/>
-                  Pulsa • Paket Data • Token PLN<br/>
-                  Bayar PDAM • BPJS • Cicilan • Topup E-Wallet
-                </p>
-              </div>
-
-              <div className="text-[9px] text-slate-400 uppercase leading-tight px-4 print:px-0 print:text-black print:text-[7px]">
-                Jl. Kali Brantas No. 28, RT 003/RW 002<br/>
-                Bendo, Kepanjenkidul, Kota Blitar<br/>
-                Jawa Timur, 66116
-              </div>
-            </div>
-            
-            <div className="hidden print:block text-center text-[7px] text-slate-300 mt-2 uppercase tracking-wider print:text-black print:mt-1">
-              Powered by Buku Saku App
             </div>
           </div>
 
-          <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 no-print">
+          <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2 no-print shrink-0">
             <Button variant="secondary" className="flex-1 text-xs" onClick={handlePrint}>
               <Printer size={16} className="mr-2" />
               Print
