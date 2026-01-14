@@ -6,7 +6,7 @@ import { Card } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageHeader } from '../components/ui/PageHeader';
 import { formatCurrency, cn } from '../lib/utils';
-import { Plus, Trash2, Edit2, ArrowUpRight, ArrowDownLeft, Search, X, ChevronDown, ChevronUp, Calendar, Tag, FileText, AlignLeft, ShoppingBag, Printer, Banknote } from 'lucide-react';
+import { Plus, Trash2, Edit2, ArrowUpRight, ArrowDownLeft, Search, X, ChevronDown, ChevronUp, Calendar, Tag, FileText, AlignLeft, ShoppingBag, Printer, Loader2 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { SEO } from '../components/SEO';
@@ -31,6 +31,7 @@ export const Transactions = () => {
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<any | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<string | null>(null); // State baru untuk loading cetak
   
   const [confirmState, setConfirmState] = useState<{
     isOpen: boolean;
@@ -84,7 +85,6 @@ export const Transactions = () => {
       setExpandedId(null);
     } else {
       setExpandedId(id);
-      // Selalu coba fetch items untuk melihat detail, apapun kategorinya
       fetchTransactionItems(id);
     }
   };
@@ -100,49 +100,54 @@ export const Transactions = () => {
   };
 
   const handleOpenReceipt = async (tx: Transaction) => {
-    let itemsToPrint: any[] = [];
+    setPrintingId(tx.id); // Mulai loading
+    try {
+      let itemsToPrint: any[] = [];
 
-    // 1. Cek apakah item sudah ada di state expandedItems (jika baris sedang dibuka)
-    if (expandedId === tx.id && expandedItems.length > 0) {
-      itemsToPrint = expandedItems;
-    } else {
-      // 2. Jika belum, fetch langsung dari database
-      const { data } = await supabase
-        .from('transaction_items')
-        .select('*')
-        .eq('transaction_id', tx.id);
-      
-      if (data && data.length > 0) itemsToPrint = data;
-    }
+      // 1. Cek apakah item sudah ada di state expandedItems (jika baris sedang dibuka)
+      if (expandedId === tx.id && expandedItems.length > 0) {
+        itemsToPrint = expandedItems;
+      } else {
+        // 2. Jika belum, fetch langsung dari database
+        const { data } = await supabase
+          .from('transaction_items')
+          .select('*')
+          .eq('transaction_id', tx.id);
+        
+        if (data && data.length > 0) itemsToPrint = data;
+      }
 
-    // 3. Format item untuk struk
-    let formattedItems = itemsToPrint.map(item => ({
-      name: item.product_name,
-      qty: item.qty,
-      price: item.price
-    }));
+      // 3. Format item untuk struk
+      let formattedItems = itemsToPrint.map(item => ({
+        name: item.product_name,
+        qty: item.qty,
+        price: item.price
+      }));
 
-    // 4. FALLBACK PENTING:
-    // Jika tidak ada item di database (misal Transaksi Manual atau Pengeluaran),
-    // gunakan Deskripsi atau Kategori sebagai item di struk agar tidak kosong.
-    if (formattedItems.length === 0) {
-      formattedItems.push({
-        name: tx.description || getCategoryLabel(tx.category), // Gunakan deskripsi sebagai nama barang
-        qty: 1,
-        price: tx.amount
+      // 4. FALLBACK: Jika tidak ada item (transaksi manual), pakai deskripsi
+      if (formattedItems.length === 0) {
+        formattedItems.push({
+          name: tx.description || getCategoryLabel(tx.category),
+          qty: 1,
+          price: tx.amount
+        });
+      }
+
+      setReceiptData({
+        id: tx.id,
+        date: tx.date,
+        total: tx.amount,
+        payment_amount: tx.payment_amount,
+        change_amount: tx.change_amount,
+        items: formattedItems
       });
+      
+      setShowReceipt(true);
+    } catch (error) {
+      showToast("Gagal memuat data struk", "error");
+    } finally {
+      setPrintingId(null); // Selesai loading
     }
-
-    setReceiptData({
-      id: tx.id,
-      date: tx.date,
-      total: tx.amount,
-      payment_amount: tx.payment_amount,
-      change_amount: tx.change_amount,
-      items: formattedItems
-    });
-    
-    setShowReceipt(true);
   };
 
   const handleEdit = (tx: Transaction) => {
@@ -454,15 +459,23 @@ export const Transactions = () => {
                             size="sm" 
                             variant="secondary" 
                             onClick={() => handleOpenReceipt(t)}
+                            disabled={printingId === t.id}
                             className="h-7 px-3 text-xs gap-1.5"
                           >
-                            <Printer size={12} />
-                            Cetak Struk
+                            {printingId === t.id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Printer size={12} />
+                            )}
+                            {printingId === t.id ? 'Memuat...' : 'Cetak Struk'}
                           </Button>
                       </div>
                       <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
                         {isLoadingItems ? (
-                          <div className="p-4 text-center text-slate-400 text-xs">Memuat rincian...</div>
+                          <div className="p-4 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                            <Loader2 size={14} className="animate-spin" />
+                            Memuat rincian...
+                          </div>
                         ) : expandedItems.length > 0 ? (
                           <div className="divide-y divide-slate-50 dark:divide-slate-800">
                             {expandedItems.map((item) => (

@@ -68,7 +68,7 @@ const ReceiptTemplate = React.forwardRef<HTMLDivElement, { data: ReceiptData; wi
         <div className="space-y-3 mb-4">
           {data.items.map((item, i) => (
             <div key={i}>
-              <div className="font-bold mb-0.5 uppercase">{item.name}</div>
+              <div className="font-bold mb-0.5 uppercase break-words">{item.name}</div>
               <div className="flex justify-between pl-0">
                 <span className="text-slate-600">{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</span>
                 <span className="font-bold">{new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
@@ -162,7 +162,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             .flex { display: flex; justify-content: space-between; }
             .mb-1 { margin-bottom: 2px; }
             .item-row { margin-bottom: 6px; }
-            .item-name { text-transform: uppercase; font-weight: bold; margin-bottom: 2px; }
+            .item-name { text-transform: uppercase; font-weight: bold; margin-bottom: 2px; word-wrap: break-word; }
             .item-detail { display: flex; justify-content: space-between; font-size: 9px; }
             .footer-note { font-size: 8px; margin-top: 5px; color: #000; }
           </style>
