@@ -68,25 +68,29 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               padding: 0; 
               font-family: 'Courier New', Courier, monospace; 
               width: ${paperWidth}mm;
+              background-color: #fff;
             }
-            .receipt { width: 100%; padding: 10px 0; }
+            .receipt { width: 100%; padding: 5px 0; }
             .text-center { text-align: center; }
             .text-right { text-align: right; }
             .font-bold { font-weight: bold; }
             .text-sm { font-size: 10px; }
             .text-xs { font-size: 9px; }
-            .address { font-size: 8px; line-height: 1.2; padding: 0 5px; word-wrap: break-word; }
+            .address { font-size: 9px; line-height: 1.2; padding: 0 2px; word-wrap: break-word; margin-bottom: 5px; }
             .border-dashed { border-bottom: 1px dashed #000; margin: 5px 0; }
             .flex { display: flex; justify-content: space-between; }
             .mb-1 { margin-bottom: 2px; }
-            .item-row { margin-bottom: 4px; }
+            .item-row { margin-bottom: 6px; }
+            .item-name { text-transform: uppercase; font-weight: bold; margin-bottom: 2px; }
+            .item-detail { display: flex; justify-content: space-between; font-size: 9px; }
+            .footer-note { font-size: 8px; margin-top: 5px; color: #000; }
           </style>
         </head>
         <body>
           <div class="receipt">
             <div class="text-center">
-              <div class="font-bold" style="font-size: 14px; margin-bottom: 2px;">28 POINT</div>
-              <div class="text-xs" style="margin-bottom: 2px;">Store & Management</div>
+              <div class="font-bold" style="font-size: 16px; margin-bottom: 4px;">28 POINT</div>
+              <div class="text-xs" style="margin-bottom: 4px;">Store & Management</div>
               <div class="address">
                 Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
               </div>
@@ -94,20 +98,20 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             
             <div class="border-dashed"></div>
             
-            <div class="flex text-xs">
+            <div class="flex text-xs" style="margin-bottom: 2px;">
               <span>${format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
               <span>#${data.id.slice(0, 6).toUpperCase()}</span>
             </div>
             
             <div class="border-dashed"></div>
             
-            <div class="items">
+            <div class="items" style="margin-top: 5px; margin-bottom: 5px;">
               ${data.items.map(item => `
                 <div class="item-row text-sm">
-                  <div class="font-bold">${item.name}</div>
-                  <div class="flex">
+                  <div class="item-name">${item.name}</div>
+                  <div class="item-detail">
                     <span>${item.qty} x ${new Intl.NumberFormat('id-ID').format(item.price)}</span>
-                    <span>${new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
+                    <span class="font-bold">${new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
                   </div>
                 </div>
               `).join('')}
@@ -115,8 +119,8 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             
             <div class="border-dashed"></div>
             
-            <div class="text-sm">
-              <div class="flex font-bold">
+            <div class="text-sm" style="margin-top: 5px;">
+              <div class="flex font-bold" style="font-size: 12px; margin-bottom: 4px;">
                 <span>TOTAL</span>
                 <span>${formatCurrency(data.total)}</span>
               </div>
@@ -135,13 +139,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
             <div class="border-dashed"></div>
             
             <div class="text-center text-xs" style="margin-top: 10px;">
-              <div class="font-bold">LAYANAN TERSEDIA:</div>
-              <div style="font-size: 8px; margin-bottom: 5px;">
+              <div class="font-bold" style="margin-bottom: 2px;">LAYANAN TERSEDIA:</div>
+              <div style="font-size: 9px; margin-bottom: 8px; line-height: 1.3;">
                 Tarik Tunai • Transfer Bank • Pulsa<br/>
                 Token Listrik • PDAM • BPJS • Topup
               </div>
-              <div>Terima Kasih</div>
-              <div style="font-size: 8px; margin-top: 5px; color: #555;">Powered by Buku Saku App</div>
+              <div class="font-bold">Terima Kasih</div>
+              <div class="footer-note">Powered by Buku Saku App</div>
             </div>
           </div>
         </body>
@@ -202,7 +206,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
     let text = `28 POINT\nStore & Management\nJl. Kali Brantas No. 28, Blitar\n${line}\n`;
     text += `Tgl : ${dateStr}\nNo  : ${data.id.slice(0, 8).toUpperCase()}\n${line}\n`;
     data.items.forEach(item => {
-      text += `${item.name}\n${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(item.qty * item.price)}\n`;
+      text += `${item.name.toUpperCase()}\n${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(item.qty * item.price)}\n`;
     });
     text += `${line}\nTOTAL   : ${formatCurrency(data.total)}\n`;
     if (data.payment_amount) {
@@ -331,9 +335,9 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
               {/* Konten Struk Visual */}
               <div className="p-4 pt-6 pb-6 font-mono text-[10px] leading-tight">
                 <div className="text-center mb-4">
-                  <h1 className="font-bold text-sm mb-1">28 POINT</h1>
+                  <h1 className="font-bold text-base mb-1">28 POINT</h1>
                   <p className="text-[9px] text-slate-500 mb-1">Store & Management</p>
-                  <p className="text-[8px] leading-tight px-2 break-words">
+                  <p className="text-[9px] leading-tight px-2 break-words">
                     Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
                   </p>
                 </div>
@@ -344,14 +348,16 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
                   <span>{format(new Date(data.date), 'dd/MM/yy HH:mm', { locale: id })}</span>
                   <span>#{data.id.slice(0, 6).toUpperCase()}</span>
                 </div>
+                
+                <div className="border-b border-dashed border-slate-300 my-2" />
 
-                <div className="space-y-2 mb-4">
+                <div className="space-y-3 mb-4">
                   {data.items.map((item, i) => (
                     <div key={i}>
-                      <div className="font-bold mb-0.5">{item.name}</div>
-                      <div className="flex justify-between pl-2">
-                        <span className="text-slate-500">{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</span>
-                        <span className="font-medium">{new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
+                      <div className="font-bold mb-0.5 uppercase">{item.name}</div>
+                      <div className="flex justify-between pl-0">
+                        <span className="text-slate-600">{item.qty} x {new Intl.NumberFormat('id-ID').format(item.price)}</span>
+                        <span className="font-bold">{new Intl.NumberFormat('id-ID').format(item.qty * item.price)}</span>
                       </div>
                     </div>
                   ))}
@@ -379,13 +385,13 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
                 <div className="text-center mt-6 space-y-2">
                   <div className="border-y border-dashed border-slate-200 py-2 bg-slate-50 -mx-4 px-4">
                     <p className="font-bold text-[9px] mb-1">LAYANAN TERSEDIA:</p>
-                    <p className="text-[8px] leading-snug text-slate-500">
+                    <p className="text-[9px] leading-snug text-slate-500">
                       Tarik Tunai • Transfer Bank • Pulsa<br/>
                       Token Listrik • PDAM • BPJS • Topup
                     </p>
                   </div>
                   <div className="pt-2">
-                    <p className="font-medium">Terima Kasih</p>
+                    <p className="font-bold">Terima Kasih</p>
                     <p className="text-[8px] text-slate-400 mt-1">Powered by Buku Saku App</p>
                   </div>
                 </div>
