@@ -50,7 +50,6 @@ const ReceiptTemplate = React.forwardRef<HTMLDivElement, { data: ReceiptData; wi
         {/* Header */}
         <div className="text-center mb-4">
           <h1 className="font-bold text-base mb-1">28 POINT</h1>
-          <p className="text-[9px] text-slate-500 mb-1">Store & Management</p>
           <p className="text-[9px] leading-tight px-2 break-words">
             Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
           </p>
@@ -109,7 +108,6 @@ const ReceiptTemplate = React.forwardRef<HTMLDivElement, { data: ReceiptData; wi
           </div>
           <div className="pt-2">
             <p className="font-bold">Terima Kasih</p>
-            <p className="text-[8px] text-slate-400 mt-1">Powered by Buku Saku App</p>
           </div>
         </div>
       </div>
@@ -173,7 +171,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
           <div class="receipt">
             <div class="text-center">
               <div class="font-bold" style="font-size: 16px; margin-bottom: 4px;">28 POINT</div>
-              <div class="text-xs" style="margin-bottom: 4px;">Store & Management</div>
               <div class="address">
                 Jl. Kali Brantas No. 28, RT 003/RW 002, BENDO, KEPANJENKIDUL, KOTA BLITAR, JAWA TIMUR, ID, 66116
               </div>
@@ -228,7 +225,6 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
                 Token Listrik • PDAM • BPJS • Topup
               </div>
               <div class="font-bold">Terima Kasih</div>
-              <div class="footer-note">Powered by Buku Saku App</div>
             </div>
           </div>
         </body>
@@ -287,7 +283,7 @@ export const ReceiptModal: React.FC<ReceiptModalProps> = ({ isOpen, onClose, dat
   const generateReceiptText = () => {
     const dateStr = format(new Date(data.date), 'dd/MM/yyyy HH:mm', { locale: id });
     const line = "-".repeat(32);
-    let text = `28 POINT\nStore & Management\nJl. Kali Brantas No. 28, Blitar\n${line}\n`;
+    let text = `28 POINT\nJl. Kali Brantas No. 28, Blitar\n${line}\n`;
     text += `Tgl : ${dateStr}\nNo  : ${data.id.slice(0, 8).toUpperCase()}\n${line}\n`;
     data.items.forEach(item => {
       text += `${item.name.toUpperCase()}\n${item.qty} x ${formatCurrency(item.price)} = ${formatCurrency(item.qty * item.price)}\n`;

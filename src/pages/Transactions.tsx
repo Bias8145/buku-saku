@@ -6,7 +6,7 @@ import { Card } from '../components/ui/Card';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { PageHeader } from '../components/ui/PageHeader';
 import { formatCurrency, cn } from '../lib/utils';
-import { Plus, Trash2, Edit2, ArrowUpRight, ArrowDownLeft, Search, X, ChevronDown, ChevronUp, Calendar, Tag, FileText, AlignLeft, ShoppingBag, Printer } from 'lucide-react';
+import { Plus, Trash2, Edit2, ArrowUpRight, ArrowDownLeft, Search, X, ChevronDown, ChevronUp, Calendar, Tag, FileText, AlignLeft, ShoppingBag, Printer, Banknote } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { id } from 'date-fns/locale';
 import { SEO } from '../components/SEO';
@@ -70,8 +70,10 @@ export const Transactions = () => {
       
       if (error) throw error;
       if (data) setExpandedItems(data);
+      return data;
     } catch (err) {
       console.error("Error fetching items:", err);
+      return [];
     } finally {
       setIsLoadingItems(false);
     }
@@ -89,37 +91,35 @@ export const Transactions = () => {
     }
   };
 
-  const handleOpenReceipt = (tx: Transaction) => {
-    const itemsToPrint = expandedId === tx.id ? expandedItems : [];
+  const handleOpenReceipt = async (tx: Transaction) => {
+    // Cek apakah item sudah ada di state expandedItems (jika baris sedang dibuka)
+    let itemsToPrint = expandedId === tx.id ? expandedItems : [];
     
-    // Helper untuk set data struk
-    const setReceipt = (items: any[]) => {
-      setReceiptData({
-        id: tx.id,
-        date: tx.date,
-        total: tx.amount,
-        payment_amount: tx.payment_amount, // Pass data pembayaran
-        change_amount: tx.change_amount,   // Pass data kembalian
-        items: items.map(item => ({
-          name: item.product_name,
-          qty: item.qty,
-          price: item.price
-        }))
-      });
-      setShowReceipt(true);
-    };
-
+    // Jika kosong, fetch langsung dari database khusus untuk struk ini
     if (itemsToPrint.length === 0 && tx.category === 'sales') {
-       supabase
+       const { data } = await supabase
         .from('transaction_items')
         .select('*')
-        .eq('transaction_id', tx.id)
-        .then(({ data }) => {
-          if (data) setReceipt(data);
-        });
-    } else {
-      setReceipt(itemsToPrint);
+        .eq('transaction_id', tx.id);
+       
+       if (data) itemsToPrint = data;
     }
+
+    // Format data untuk ReceiptModal
+    setReceiptData({
+      id: tx.id,
+      date: tx.date,
+      total: tx.amount,
+      payment_amount: tx.payment_amount, // Mengirim data Tunai
+      change_amount: tx.change_amount,   // Mengirim data Kembali
+      items: itemsToPrint.map(item => ({
+        name: item.product_name,
+        qty: item.qty,
+        price: item.price
+      }))
+    });
+    
+    setShowReceipt(true);
   };
 
   const handleEdit = (tx: Transaction) => {
@@ -453,30 +453,32 @@ export const Transactions = () => {
                           ) : expandedItems.length > 0 ? (
                             <div className="divide-y divide-slate-50 dark:divide-slate-800">
                               {expandedItems.map((item) => (
-                                <div key={item.id} className="p-3 flex justify-between items-center hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400">
+                                <div key={item.id} className="p-3 flex justify-between items-start hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-dashed border-slate-100 dark:border-slate-800 last:border-0">
+                                  <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400 shrink-0">
                                       <ShoppingBag size={14} />
                                     </div>
                                     <div>
-                                      <p className="font-medium text-slate-700 dark:text-slate-200 text-xs">{item.product_name}</p>
-                                      <p className="text-[10px] text-slate-400">{item.qty} x {formatCurrency(item.price)}</p>
+                                      <p className="font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">{item.product_name}</p>
+                                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                                        {item.qty} x {formatCurrency(item.price)}
+                                      </p>
                                     </div>
                                   </div>
-                                  <p className="font-bold text-slate-700 dark:text-slate-300 text-xs">{formatCurrency(item.subtotal)}</p>
+                                  <p className="font-bold text-slate-700 dark:text-slate-300 text-xs font-mono">{formatCurrency(item.subtotal)}</p>
                                 </div>
                               ))}
                               
                               {/* Tampilkan Info Pembayaran jika ada */}
-                              {t.payment_amount && (
-                                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-xs border-t border-slate-100 dark:border-slate-800">
+                              {t.payment_amount !== undefined && t.payment_amount !== null && (
+                                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-xs border-t-2 border-dashed border-slate-200 dark:border-slate-700">
                                   <div className="flex justify-between text-slate-500 mb-1">
-                                    <span>Tunai</span>
-                                    <span>{formatCurrency(t.payment_amount)}</span>
+                                    <span>TUNAI</span>
+                                    <span className="font-mono">{formatCurrency(t.payment_amount)}</span>
                                   </div>
                                   <div className="flex justify-between text-slate-500">
-                                    <span>Kembali</span>
-                                    <span className="font-bold text-slate-700 dark:text-slate-300">{formatCurrency(t.change_amount || 0)}</span>
+                                    <span>KEMBALI</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">{formatCurrency(t.change_amount || 0)}</span>
                                   </div>
                                 </div>
                               )}
