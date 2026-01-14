@@ -84,39 +84,62 @@ export const Transactions = () => {
       setExpandedId(null);
     } else {
       setExpandedId(id);
-      const tx = transactions.find(t => t.id === id);
-      if (tx && tx.category === 'sales') {
-        fetchTransactionItems(id);
-      }
+      // Selalu coba fetch items untuk melihat detail, apapun kategorinya
+      fetchTransactionItems(id);
+    }
+  };
+
+  const getCategoryLabel = (cat: string) => {
+    switch (cat) {
+      case 'sales': return 'Penjualan';
+      case 'operational': return 'Operasional';
+      case 'capital': return 'Modal';
+      case 'other': return 'Lainnya';
+      default: return cat;
     }
   };
 
   const handleOpenReceipt = async (tx: Transaction) => {
-    // Cek apakah item sudah ada di state expandedItems (jika baris sedang dibuka)
-    let itemsToPrint = expandedId === tx.id ? expandedItems : [];
-    
-    // Jika kosong, fetch langsung dari database khusus untuk struk ini
-    if (itemsToPrint.length === 0 && tx.category === 'sales') {
-       const { data } = await supabase
+    let itemsToPrint: any[] = [];
+
+    // 1. Cek apakah item sudah ada di state expandedItems (jika baris sedang dibuka)
+    if (expandedId === tx.id && expandedItems.length > 0) {
+      itemsToPrint = expandedItems;
+    } else {
+      // 2. Jika belum, fetch langsung dari database
+      const { data } = await supabase
         .from('transaction_items')
         .select('*')
         .eq('transaction_id', tx.id);
-       
-       if (data) itemsToPrint = data;
+      
+      if (data && data.length > 0) itemsToPrint = data;
     }
 
-    // Format data untuk ReceiptModal
+    // 3. Format item untuk struk
+    let formattedItems = itemsToPrint.map(item => ({
+      name: item.product_name,
+      qty: item.qty,
+      price: item.price
+    }));
+
+    // 4. FALLBACK PENTING:
+    // Jika tidak ada item di database (misal Transaksi Manual atau Pengeluaran),
+    // gunakan Deskripsi atau Kategori sebagai item di struk agar tidak kosong.
+    if (formattedItems.length === 0) {
+      formattedItems.push({
+        name: tx.description || getCategoryLabel(tx.category), // Gunakan deskripsi sebagai nama barang
+        qty: 1,
+        price: tx.amount
+      });
+    }
+
     setReceiptData({
       id: tx.id,
       date: tx.date,
       total: tx.amount,
-      payment_amount: tx.payment_amount, // Mengirim data Tunai
-      change_amount: tx.change_amount,   // Mengirim data Kembali
-      items: itemsToPrint.map(item => ({
-        name: item.product_name,
-        qty: item.qty,
-        price: item.price
-      }))
+      payment_amount: tx.payment_amount,
+      change_amount: tx.change_amount,
+      items: formattedItems
     });
     
     setShowReceipt(true);
@@ -196,16 +219,6 @@ export const Transactions = () => {
     setIsFormOpen(false);
     setEditingId(null);
     reset();
-  };
-
-  const getCategoryLabel = (cat: string) => {
-    switch (cat) {
-      case 'sales': return 'Penjualan';
-      case 'operational': return 'Operasional';
-      case 'capital': return 'Modal';
-      case 'other': return 'Lainnya';
-      default: return cat;
-    }
   };
 
   return (
@@ -433,64 +446,70 @@ export const Transactions = () => {
                       </div>
                     </div>
                     
-                    {t.category === 'sales' && (
-                      <div className="col-span-1 md:col-span-2 mt-2">
-                        <div className="flex justify-between items-center mb-2">
-                           <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Rincian Barang Terjual</p>
-                           <Button 
-                             size="sm" 
-                             variant="secondary" 
-                             onClick={() => handleOpenReceipt(t)}
-                             className="h-7 px-3 text-xs gap-1.5"
-                           >
-                             <Printer size={12} />
-                             Cetak Struk
-                           </Button>
-                        </div>
-                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-                          {isLoadingItems ? (
-                            <div className="p-4 text-center text-slate-400 text-xs">Memuat rincian...</div>
-                          ) : expandedItems.length > 0 ? (
-                            <div className="divide-y divide-slate-50 dark:divide-slate-800">
-                              {expandedItems.map((item) => (
-                                <div key={item.id} className="p-3 flex justify-between items-start hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-dashed border-slate-100 dark:border-slate-800 last:border-0">
-                                  <div className="flex items-start gap-3">
-                                    <div className="mt-0.5 p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400 shrink-0">
-                                      <ShoppingBag size={14} />
-                                    </div>
-                                    <div>
-                                      <p className="font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">{item.product_name}</p>
-                                      <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
-                                        {item.qty} x {formatCurrency(item.price)}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <p className="font-bold text-slate-700 dark:text-slate-300 text-xs font-mono">{formatCurrency(item.subtotal)}</p>
-                                </div>
-                              ))}
-                              
-                              {/* Tampilkan Info Pembayaran jika ada */}
-                              {t.payment_amount !== undefined && t.payment_amount !== null && (
-                                <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-xs border-t-2 border-dashed border-slate-200 dark:border-slate-700">
-                                  <div className="flex justify-between text-slate-500 mb-1">
-                                    <span>TUNAI</span>
-                                    <span className="font-mono">{formatCurrency(t.payment_amount)}</span>
-                                  </div>
-                                  <div className="flex justify-between text-slate-500">
-                                    <span>KEMBALI</span>
-                                    <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">{formatCurrency(t.change_amount || 0)}</span>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="p-4 text-center text-slate-400 text-xs italic">
-                              Tidak ada rincian barang untuk transaksi ini.
-                            </div>
-                          )}
-                        </div>
+                    {/* Bagian Rincian Barang & Tombol Cetak */}
+                    <div className="col-span-1 md:col-span-2 mt-2">
+                      <div className="flex justify-between items-center mb-2">
+                          <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Rincian Transaksi</p>
+                          <Button 
+                            size="sm" 
+                            variant="secondary" 
+                            onClick={() => handleOpenReceipt(t)}
+                            className="h-7 px-3 text-xs gap-1.5"
+                          >
+                            <Printer size={12} />
+                            Cetak Struk
+                          </Button>
                       </div>
-                    )}
+                      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
+                        {isLoadingItems ? (
+                          <div className="p-4 text-center text-slate-400 text-xs">Memuat rincian...</div>
+                        ) : expandedItems.length > 0 ? (
+                          <div className="divide-y divide-slate-50 dark:divide-slate-800">
+                            {expandedItems.map((item) => (
+                              <div key={item.id} className="p-3 flex justify-between items-start hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-dashed border-slate-100 dark:border-slate-800 last:border-0">
+                                <div className="flex items-start gap-3">
+                                  <div className="mt-0.5 p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-blue-600 dark:text-blue-400 shrink-0">
+                                    <ShoppingBag size={14} />
+                                  </div>
+                                  <div>
+                                    <p className="font-bold text-slate-700 dark:text-slate-200 text-xs uppercase tracking-wide">{item.product_name}</p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                                      {item.qty} x {formatCurrency(item.price)}
+                                    </p>
+                                  </div>
+                                </div>
+                                <p className="font-bold text-slate-700 dark:text-slate-300 text-xs font-mono">{formatCurrency(item.subtotal)}</p>
+                              </div>
+                            ))}
+                            
+                            {/* Tampilkan Info Pembayaran jika ada */}
+                            {t.payment_amount !== undefined && t.payment_amount !== null && (
+                              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 text-xs border-t-2 border-dashed border-slate-200 dark:border-slate-700">
+                                <div className="flex justify-between text-slate-500 mb-1">
+                                  <span>TUNAI</span>
+                                  <span className="font-mono">{formatCurrency(t.payment_amount)}</span>
+                                </div>
+                                <div className="flex justify-between text-slate-500">
+                                  <span>KEMBALI</span>
+                                  <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">{formatCurrency(t.change_amount || 0)}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          // Tampilan jika tidak ada item spesifik (misal transaksi manual)
+                          <div className="p-4 flex items-center gap-3 text-slate-500">
+                            <div className="p-2 bg-slate-50 dark:bg-slate-800 rounded-lg">
+                              <FileText size={16} />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{t.description || getCategoryLabel(t.category)}</p>
+                              <p className="text-[10px] text-slate-400">Total: {formatCurrency(t.amount)}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
 
                     <div className="col-span-1 md:col-span-2 mt-2">
                       <p className="text-[10px] uppercase tracking-wider text-slate-400 font-bold mb-2">Isi Memo / Catatan</p>
